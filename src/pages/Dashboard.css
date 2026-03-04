@@ -1,11 +1,11 @@
 .dashboard-welcome {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
   padding: 2rem 1.5rem;
-  min-height: calc(100dvh - 7rem); /* viewport minus top header + bottom nav */
 }
 
 .dashboard-welcome h1 {
@@ -15,6 +15,44 @@
 .dashboard-welcome p {
   color: var(--text-secondary);
   margin-bottom: 1.5rem;
+}
+
+/* Resume game banner */
+.resume-banner {
+  margin-bottom: 1rem;
+  cursor: pointer;
+  border: 2px solid var(--accent);
+  background: var(--accent-light, rgba(129, 140, 248, 0.08));
+  transition: all var(--transition);
+}
+
+.resume-banner:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 16px rgba(129, 140, 248, 0.2);
+}
+
+.resume-banner__content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.resume-banner__info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.resume-banner__title {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--accent);
+}
+
+.resume-banner__details {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
 }
 
 .dashboard-header {

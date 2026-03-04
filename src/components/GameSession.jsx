@@ -73,6 +73,14 @@ function FullscreenIcon({ size = 16 }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" /></svg>
 }
 
+function EyeIcon({ size = 16 }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+}
+
+function EyeOffIcon({ size = 16 }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+}
+
 // --- Sub-components ---
 function RotatedCardWrapper({ rotation, children }) {
   const containerRef = useRef(null)
@@ -367,15 +375,18 @@ function toggleFullscreen() {
   }
 }
 
+const ACTIVE_GAME_KEY = 'mtg-active-game'
+
 // --- Main GameSession Component ---
-export default function GameSession({ format, startingLife, setupPlayers, getPlayerLabel, user, friends, onEndGame }) {
+export default function GameSession({ format, startingLife, setupPlayers, getPlayerLabel, user, friends, onEndGame, resumeState }) {
   const { addToast } = useToast()
   const { createGame } = useGames()
 
   const isCommander = format === 'Commander' || format === 'Brawl'
 
-  // Build initial players from setup data
+  // Build initial players from setup data (or restore from resumeState)
   const [players, setPlayers] = useState(() => {
+    if (resumeState?.players) return resumeState.players
     const colors = Object.keys(MANA_COLORS)
     return setupPlayers.map((sp, i) => ({
       id: sp.id,
@@ -397,12 +408,16 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
   })
 
   const [theme, setTheme] = useState(() => {
+    if (resumeState?.themeId) {
+      const t = THEMES.find(t => t.id === resumeState.themeId)
+      if (t) return t
+    }
     const savedId = localStorage.getItem('mtg-game-theme')
     return THEMES.find(t => t.id === savedId) || THEMES[0]
   })
   const [minimized, setMinimized] = useState({})
-  const [stormCount, setStormCount] = useState(0)
-  const [turnCount, setTurnCount] = useState(1)
+  const [stormCount, setStormCount] = useState(resumeState?.stormCount ?? 0)
+  const [turnCount, setTurnCount] = useState(resumeState?.turnCount ?? 1)
   const [gameLog, setGameLog] = useState([])
   const [showTools, setShowTools] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
@@ -413,12 +428,14 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
   const [rolling, setRolling] = useState(false)
   const [flipping, setFlipping] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [hideNav, setHideNav] = useState(true) // auto-enable on game start
   const [firstPlayer, setFirstPlayer] = useState(null)
   const [pickingFirst, setPickingFirst] = useState(false)
-  const [layoutMode, setLayoutMode] = useState(() => localStorage.getItem('mtg-layout-mode') || 'mobile')
+  const [layoutMode, setLayoutMode] = useState(() => resumeState?.layoutMode || localStorage.getItem('mtg-layout-mode') || 'mobile')
 
   // End game state
   const [showEndModal, setShowEndModal] = useState(false)
+  const [showAbandonConfirm, setShowAbandonConfirm] = useState(false)
   const [winners, setWinners] = useState({})
   const [endNotes, setEndNotes] = useState('')
   const [saving, setSaving] = useState(false)
@@ -432,6 +449,31 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
   const isDesktop = layoutMode === 'desktop'
 
   useWakeLock()
+
+  // Hide nav when game is active
+  useEffect(() => {
+    if (hideNav) {
+      document.documentElement.setAttribute('data-game-fullscreen', 'true')
+    } else {
+      document.documentElement.removeAttribute('data-game-fullscreen')
+    }
+    return () => document.documentElement.removeAttribute('data-game-fullscreen')
+  }, [hideNav])
+
+  // Save game state to localStorage for resume functionality
+  useEffect(() => {
+    const saveState = {
+      players,
+      format,
+      startingLife,
+      turnCount,
+      stormCount,
+      themeId: theme.id,
+      layoutMode,
+      timestamp: Date.now(),
+    }
+    localStorage.setItem(ACTIVE_GAME_KEY, JSON.stringify(saveState))
+  }, [players, format, startingLife, turnCount, stormCount, theme, layoutMode])
 
   // Save theme preference
   useEffect(() => {
@@ -588,6 +630,7 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
       })
 
       await createGame(gameData, playerData)
+      localStorage.removeItem(ACTIVE_GAME_KEY)
       addToast('Game saved!', 'success')
       onEndGame()
     } catch (err) {
@@ -595,6 +638,11 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleAbandonGame = () => {
+    localStorage.removeItem(ACTIVE_GAME_KEY)
+    onEndGame()
   }
 
   return (
@@ -630,9 +678,11 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
           <button onClick={() => { haptic(); setShowSettings(!showSettings) }} style={{ padding: '6px 14px', borderRadius: 8, background: showSettings ? theme.accent : 'transparent', border: `1px solid ${theme.border}`, color: showSettings ? theme.bg : theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{'\u2699'} Theme</button>
           <button onClick={() => { haptic(); setShowTools(!showTools) }} style={{ padding: '6px 14px', borderRadius: 8, background: showTools ? theme.accent : 'transparent', border: `1px solid ${theme.border}`, color: showTools ? theme.bg : theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{'\uD83C\uDFB2'} Tools</button>
           <button onClick={() => { haptic(); setShowHistory(!showHistory) }} style={{ padding: '6px 14px', borderRadius: 8, background: showHistory ? theme.accent : 'transparent', border: `1px solid ${theme.border}`, color: showHistory ? theme.bg : theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}><HistoryIcon size={12} /> Log</button>
+          <button onClick={() => { haptic(); setHideNav(!hideNav) }} style={{ padding: '6px 14px', borderRadius: 8, background: hideNav ? theme.accent : 'transparent', border: `1px solid ${theme.border}`, color: hideNav ? theme.bg : theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{hideNav ? <EyeOffIcon size={12} /> : <EyeIcon size={12} />} Nav</button>
           <button onClick={toggleFullscreen} style={{ padding: '6px 14px', borderRadius: 8, background: isFullscreen ? theme.accent : 'transparent', border: `1px solid ${theme.border}`, color: isFullscreen ? theme.bg : theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}><FullscreenIcon size={12} /> {isFullscreen ? 'Exit' : 'Full'}</button>
           <button onClick={toggleLayoutMode} style={{ padding: '6px 14px', borderRadius: 8, background: 'transparent', border: `1px solid ${theme.border}`, color: theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{isDesktop ? '\uD83D\uDDA5\uFE0F' : '\uD83D\uDCF1'} {isDesktop ? 'Desktop' : 'Mobile'}</button>
           <button onClick={() => { haptic(); setShowEndModal(true) }} style={{ padding: '6px 14px', borderRadius: 8, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', color: '#F87171', fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{'\u2716'} End Game</button>
+          <button onClick={() => { haptic(); setShowAbandonConfirm(true) }} style={{ padding: '6px 14px', borderRadius: 8, background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.35)', color: '#FBBF24', fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{'\u26A0'} Abandon</button>
         </div>
 
         {/* Settings panel (theme only — format is locked) */}
@@ -807,6 +857,17 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
             <button type="button" className="endgame-cancel-btn" onClick={() => setEditingPlayer(null)}>Cancel</button>
             <button type="button" className="endgame-save-btn" onClick={saveEditPlayer}>Save</button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Abandon Game Confirm Modal */}
+      <Modal isOpen={showAbandonConfirm} onClose={() => setShowAbandonConfirm(false)} title="Abandon Game">
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+          Are you sure? This will discard the current game without saving.
+        </p>
+        <div className="endgame-modal__actions">
+          <button type="button" className="endgame-cancel-btn" onClick={() => setShowAbandonConfirm(false)}>Cancel</button>
+          <button type="button" className="endgame-save-btn" style={{ background: '#FBBF24', color: '#000' }} onClick={handleAbandonGame}>Abandon Game</button>
         </div>
       </Modal>
 

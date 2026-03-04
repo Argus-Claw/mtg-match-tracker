@@ -1,4 +1,5 @@
-import { Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useStats } from '../hooks/useStats'
 import { useAuth } from '../context/AuthContext'
 import Card from '../components/Card'
@@ -20,17 +21,60 @@ const CHART_COLORS = [
   '#60a5fa', '#a78bfa', '#fb923c', '#4ade80',
 ]
 
+function getActiveGame() {
+  try {
+    const raw = localStorage.getItem('mtg-active-game')
+    if (!raw) return null
+    const data = JSON.parse(raw)
+    // Only show if within the last 24 hours
+    if (Date.now() - data.timestamp > 24 * 60 * 60 * 1000) {
+      localStorage.removeItem('mtg-active-game')
+      return null
+    }
+    return data
+  } catch {
+    return null
+  }
+}
+
+function timeAgo(timestamp) {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000)
+  if (seconds < 60) return 'just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`
+  return 'over a day ago'
+}
+
 export default function Dashboard() {
   const { profile } = useAuth()
   const { stats, loading } = useStats()
+  const navigate = useNavigate()
+  const [activeGame, setActiveGame] = useState(getActiveGame)
 
   if (loading) {
     return <LoadingSpinner size="lg" text="Loading dashboard..." />
   }
 
+  const resumeBanner = activeGame && (
+    <Card className="resume-banner" onClick={() => navigate('/games/new', { state: { resume: true } })}>
+      <div className="resume-banner__content">
+        <div className="resume-banner__info">
+          <span className="resume-banner__title">Game in Progress</span>
+          <span className="resume-banner__details">
+            {FORMAT_ICONS[activeGame.format]} {activeGame.format} &middot; {activeGame.players?.length || '?'} players &middot; saved {timeAgo(activeGame.timestamp)}
+          </span>
+        </div>
+        <Button size="sm">Resume</Button>
+      </div>
+    </Card>
+  )
+
   if (!stats || stats.totalGames === 0) {
     return (
       <div className="page">
+        {resumeBanner}
         <div className="dashboard-welcome">
           <h1>Welcome{profile?.display_name ? `, ${profile.display_name}` : ''}!</h1>
           <p>Start tracking your MTG games to see your stats here.</p>
@@ -49,6 +93,8 @@ export default function Dashboard() {
 
   return (
     <div className="page">
+      {resumeBanner}
+
       <div className="dashboard-header">
         <h1>Dashboard</h1>
         <Link to="/games/new">

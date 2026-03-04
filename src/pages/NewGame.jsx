@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { useFriends } from '../hooks/useFriends'
@@ -28,9 +28,13 @@ function makePlayer(overrides = {}) {
 
 export default function NewGame() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { user, profile } = useAuth()
   const { addToast } = useToast()
   const { friends } = useFriends()
+
+  // Check for resume state
+  const [resumeState, setResumeState] = useState(null)
 
   // Setup wizard state
   const [step, setStep] = useState(1)
@@ -42,6 +46,26 @@ export default function NewGame() {
 
   // Game session state — once started, we show the life tracker
   const [gameStarted, setGameStarted] = useState(false)
+
+  // Handle resume from Dashboard
+  useEffect(() => {
+    if (location.state?.resume) {
+      try {
+        const raw = localStorage.getItem('mtg-active-game')
+        if (raw) {
+          const saved = JSON.parse(raw)
+          if (Date.now() - saved.timestamp <= 24 * 60 * 60 * 1000) {
+            setResumeState(saved)
+            setFormat(saved.format)
+            setGameStarted(true)
+            // Clear the location state to avoid re-resuming on refresh
+            navigate(location.pathname, { replace: true, state: {} })
+            return
+          }
+        }
+      } catch { /* ignore parse errors */ }
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const isCommander = format === 'Commander' || format === 'Brawl'
   const startingLife = DEFAULT_LIFE[format] || 20
@@ -122,13 +146,14 @@ export default function NewGame() {
   if (gameStarted) {
     return (
       <GameSession
-        format={format}
-        startingLife={startingLife}
+        format={resumeState?.format || format}
+        startingLife={resumeState?.startingLife || startingLife}
         setupPlayers={players}
         getPlayerLabel={getPlayerLabel}
         user={user}
         friends={friends}
         onEndGame={() => navigate('/games')}
+        resumeState={resumeState}
       />
     )
   }

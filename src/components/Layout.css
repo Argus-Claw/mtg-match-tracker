@@ -6,6 +6,8 @@
 
 .layout__main {
   flex: 1;
+  display: flex;
+  flex-direction: column;
   padding-bottom: 4rem; /* space for bottom nav on mobile */
 }
 
@@ -14,4 +16,16 @@
     margin-left: 200px; /* space for desktop sidebar */
     padding-bottom: 0;
   }
+}
+
+/* Hide nav elements when game session is in fullscreen mode */
+:root[data-game-fullscreen="true"] .bottom-nav,
+:root[data-game-fullscreen="true"] .desktop-nav,
+:root[data-game-fullscreen="true"] .topbar {
+  display: none !important;
+}
+
+:root[data-game-fullscreen="true"] .layout__main {
+  margin-left: 0;
+  padding-bottom: 0;
 }
