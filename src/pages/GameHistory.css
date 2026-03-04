@@ -1,0 +1,164 @@
+/* Filters */
+.history-filters {
+  margin-bottom: 1.5rem;
+}
+
+.history-filters__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+@media (max-width: 480px) {
+  .history-filters__row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.history-filters__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Game list */
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.history-game__summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: background var(--transition);
+  border-radius: var(--radius-lg);
+}
+
+.history-game__summary:hover {
+  background: var(--bg-hover);
+}
+
+.history-game__info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.history-game__format {
+  font-weight: 500;
+  font-size: 0.9375rem;
+}
+
+.history-game__meta {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.history-game__deck {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  display: none;
+}
+
+@media (min-width: 480px) {
+  .history-game__deck {
+    display: block;
+  }
+}
+
+.history-game__chevron {
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+/* Expanded details */
+.history-game__details {
+  padding: 0 1rem 1rem;
+  border-top: 1px solid var(--border-light);
+  margin-top: 0;
+}
+
+.history-game__players {
+  margin-top: 1rem;
+}
+
+.history-game__players h4 {
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+}
+
+.history-player {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-light);
+  gap: 0.75rem;
+}
+
+.history-player:last-child {
+  border-bottom: none;
+}
+
+.history-player__name {
+  font-weight: 500;
+  font-size: 0.875rem;
+  display: block;
+}
+
+.history-player__deck {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  display: block;
+}
+
+.history-player__colors {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.history-player__stats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.history-game__meta-details {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.history-game__notes {
+  width: 100%;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin-top: 0.25rem;
+}
+
+.history-game__actions {
+  margin-top: 1rem;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
