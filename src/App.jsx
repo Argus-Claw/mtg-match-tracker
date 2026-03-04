@@ -8,7 +8,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
 import Dashboard from './pages/Dashboard'
-import LogGame from './pages/LogGame'
+import NewGame from './pages/NewGame'
 import GameHistory from './pages/GameHistory'
 import Stats from './pages/Stats'
 import Friends from './pages/Friends'
@@ -68,7 +68,7 @@ export default function App() {
                   path="/games/new"
                   element={
                     <ProtectedRoute>
-                      <LogGame />
+                      <NewGame />
                     </ProtectedRoute>
                   }
                 />

@@ -6,7 +6,7 @@ import './Navbar.css'
 
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: '🏠' },
-  { path: '/games/new', label: 'Log Game', icon: '➕' },
+  { path: '/games/new', label: 'New Game', icon: '🎮' },
   { path: '/games', label: 'History', icon: '📋' },
   { path: '/stats', label: 'Stats', icon: '📊' },
   { path: '/friends', label: 'Friends', icon: '👥' },

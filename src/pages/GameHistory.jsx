@@ -75,7 +75,7 @@ export default function GameHistory() {
       <div className="dashboard-header">
         <h1 className="page-title">Game History</h1>
         <Link to="/games/new">
-          <Button>Log Game</Button>
+          <Button>New Game</Button>
         </Link>
       </div>
 
@@ -123,9 +123,9 @@ export default function GameHistory() {
       {filteredGames.length === 0 ? (
         <div className="empty-state">
           <h3>No games found</h3>
-          <p>Try adjusting your filters or log a new game.</p>
+          <p>Try adjusting your filters or start a new game.</p>
           <Link to="/games/new">
-            <Button>Log Game</Button>
+            <Button>New Game</Button>
           </Link>
         </div>
       ) : (

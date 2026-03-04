@@ -35,7 +35,7 @@ export default function Dashboard() {
           <h1>Welcome{profile?.display_name ? `, ${profile.display_name}` : ''}!</h1>
           <p>Start tracking your MTG games to see your stats here.</p>
           <Link to="/games/new">
-            <Button size="lg">Log Your First Game</Button>
+            <Button size="lg">Start Your First Game</Button>
           </Link>
         </div>
       </div>
@@ -52,7 +52,7 @@ export default function Dashboard() {
       <div className="dashboard-header">
         <h1>Dashboard</h1>
         <Link to="/games/new">
-          <Button>Log Game</Button>
+          <Button>New Game</Button>
         </Link>
       </div>
 
