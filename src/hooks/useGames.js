@@ -47,6 +47,11 @@ export function useGames() {
   }, [fetchGames])
 
   async function createGame(gameData, players) {
+    // Refresh session to ensure JWT is valid before writing (prevents RLS failures on long games)
+    const { data: { session } } = await supabase.auth.getSession()
+    const userId = session?.user?.id || user?.id
+    if (!userId) throw new Error('Not authenticated — please sign in again')
+
     const { data: game, error: gameError } = await supabase
       .from('games')
       .insert({
@@ -55,7 +60,7 @@ export function useGames() {
         duration_minutes: gameData.duration_minutes || null,
         turn_count: gameData.turn_count || null,
         notes: gameData.notes || null,
-        created_by: user.id,
+        created_by: userId,
         is_complete: true,
       })
       .select()
