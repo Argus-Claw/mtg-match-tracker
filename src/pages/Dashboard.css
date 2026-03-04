@@ -1,6 +1,11 @@
 .dashboard-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   text-align: center;
-  padding: 4rem 1rem;
+  padding: 2rem 1.5rem;
+  min-height: calc(100dvh - 7rem); /* viewport minus top header + bottom nav */
 }
 
 .dashboard-welcome h1 {
