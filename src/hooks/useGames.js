@@ -47,12 +47,19 @@ export function useGames() {
   }, [fetchGames])
 
   async function createGame(gameData, players) {
-    // Refresh session to ensure JWT is valid before writing (prevents RLS failures on long games)
-    const { data: { session } } = await supabase.auth.getSession()
-    const userId = session?.user?.id || user?.id
+    // Force-refresh the JWT before writing (prevents RLS failures when token expired during long games)
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+    if (refreshError || !refreshData?.session) {
+      // Refresh failed — try getSession as fallback
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user?.id) throw new Error('Session expired — please sign in again')
+    }
+    const currentSession = refreshData?.session || (await supabase.auth.getSession()).data.session
+    const userId = currentSession?.user?.id
     if (!userId) throw new Error('Not authenticated — please sign in again')
 
-    const { data: game, error: gameError } = await supabase
+    // Step 1: Insert game (separate from SELECT to avoid PostgREST RLS conflict)
+    const { error: gameInsertError } = await supabase
       .from('games')
       .insert({
         format: gameData.format,
@@ -63,10 +70,21 @@ export function useGames() {
         // created_by set automatically by DB trigger (auth.uid())
         is_complete: true,
       })
-      .select()
+
+    if (gameInsertError) throw gameInsertError
+
+    // Step 2: Fetch the game we just created (separate SELECT)
+    const { data: game, error: gameFetchError } = await supabase
+      .from('games')
+      .select('*')
+      .eq('created_by', userId)
+      .eq('format', gameData.format)
+      .eq('date', gameData.date)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .single()
 
-    if (gameError) throw gameError
+    if (gameFetchError) throw gameFetchError
 
     const playerInserts = players.map((p) => ({
       game_id: game.id,
