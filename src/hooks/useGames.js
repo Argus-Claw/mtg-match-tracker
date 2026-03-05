@@ -60,7 +60,7 @@ export function useGames() {
         duration_minutes: gameData.duration_minutes || null,
         turn_count: gameData.turn_count || null,
         notes: gameData.notes || null,
-        created_by: userId,
+        // created_by set automatically by DB trigger (auth.uid())
         is_complete: true,
       })
       .select()
