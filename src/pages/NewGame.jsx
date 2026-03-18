@@ -4,6 +4,21 @@ import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { useFriends } from '../hooks/useFriends'
 import { FORMATS, DEFAULT_LIFE } from '../lib/constants'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import Button from '../components/Button'
 import Card from '../components/Card'
 import Input from '../components/Input'
@@ -24,6 +39,75 @@ function makePlayer(overrides = {}) {
     commander_colors: [],
     ...overrides,
   }
+}
+
+function DragHandle(props) {
+  return (
+    <button type="button" className="newgame-drag-handle" {...props}>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <circle cx="5" cy="3" r="1.5" />
+        <circle cx="11" cy="3" r="1.5" />
+        <circle cx="5" cy="8" r="1.5" />
+        <circle cx="11" cy="8" r="1.5" />
+        <circle cx="5" cy="13" r="1.5" />
+        <circle cx="11" cy="13" r="1.5" />
+      </svg>
+    </button>
+  )
+}
+
+function SortablePlayer({ player, index, getPlayerLabel, user, players, removePlayer, updatePlayer }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: player.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`newgame-player ${isDragging ? 'newgame-player--dragging' : ''}`}
+    >
+      <div className="newgame-player__header">
+        <div className="newgame-player__header-left">
+          <DragHandle {...attributes} {...listeners} />
+          <span className="newgame-player__label">
+            {getPlayerLabel(player, index)}
+            {player.user_id === user?.id && (
+              <span className="newgame-player__you"> (you)</span>
+            )}
+          </span>
+        </div>
+        {players.length > 2 && player.user_id !== user?.id && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => removePlayer(index)}
+          >
+            &times;
+          </Button>
+        )}
+      </div>
+      {!player.user_id && (
+        <Input
+          label="Player Name"
+          value={player.guest_name}
+          onChange={e => updatePlayer(index, 'guest_name', e.target.value)}
+          placeholder="Enter name"
+        />
+      )}
+    </div>
+  )
 }
 
 export default function NewGame() {
@@ -66,6 +150,22 @@ export default function NewGame() {
       } catch { /* ignore parse errors */ }
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+  )
+
+  function handleDragEnd(event) {
+    const { active, over } = event
+    if (over && active.id !== over.id) {
+      setPlayers(prev => {
+        const oldIndex = prev.findIndex(p => p.id === active.id)
+        const newIndex = prev.findIndex(p => p.id === over.id)
+        return arrayMove(prev, oldIndex, newIndex)
+      })
+    }
+  }
 
   const isCommander = format === 'Commander' || format === 'Brawl'
   const startingLife = DEFAULT_LIFE[format] || 20
@@ -233,36 +333,30 @@ export default function NewGame() {
             </div>
           )}
 
-          {players.map((player, index) => (
-            <div key={player.id} className="newgame-player">
-              <div className="newgame-player__header">
-                <span className="newgame-player__label">
-                  {getPlayerLabel(player, index)}
-                  {player.user_id === user?.id && (
-                    <span className="newgame-player__you"> (you)</span>
-                  )}
-                </span>
-                {players.length > 2 && player.user_id !== user?.id && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removePlayer(index)}
-                  >
-                    &times;
-                  </Button>
-                )}
-              </div>
-              {!player.user_id && (
-                <Input
-                  label="Player Name"
-                  value={player.guest_name}
-                  onChange={e => updatePlayer(index, 'guest_name', e.target.value)}
-                  placeholder="Enter name"
+          <p className="newgame-hint">Drag to reorder seating positions.</p>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={players.map(p => p.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {players.map((player, index) => (
+                <SortablePlayer
+                  key={player.id}
+                  player={player}
+                  index={index}
+                  getPlayerLabel={getPlayerLabel}
+                  user={user}
+                  players={players}
+                  removePlayer={removePlayer}
+                  updatePlayer={updatePlayer}
                 />
-              )}
-            </div>
-          ))}
+              ))}
+            </SortableContext>
+          </DndContext>
 
           <div className="newgame-nav">
             <Button variant="ghost" onClick={() => setStep(1)}>
