@@ -2,6 +2,20 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { useGames } from '../hooks/useGames'
+import {
+  DndContext,
+  closestCenter,
+  TouchSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  rectSwappingStrategy,
+  useSortable,
+  arraySwap,
+} from '@dnd-kit/sortable'
 import Modal from './Modal'
 import './GameSession.css'
 
@@ -346,6 +360,51 @@ function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, i
   )
 }
 
+function SortablePlayerPanel({ id, children, theme, gridColumn }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isOver,
+  } = useSortable({ id })
+
+  const style = {
+    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    outline: isOver && !isDragging ? `2px solid ${theme.accent}` : 'none',
+    outlineOffset: 2,
+    position: 'relative',
+    display: 'flex',
+    flexDirection: 'column',
+    gridColumn,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes}>
+      <div
+        ref={setActivatorNodeRef}
+        {...listeners}
+        style={{
+          position: 'absolute', top: 8, left: 8, zIndex: 20,
+          cursor: 'grab', touchAction: 'none',
+          color: theme.muted, fontSize: 18, lineHeight: 1,
+          background: 'rgba(0,0,0,0.35)', borderRadius: 6,
+          padding: '2px 5px', userSelect: 'none',
+        }}
+        title="Drag to rearrange"
+      >
+        {'\u2807'}
+      </div>
+      {children}
+    </div>
+  )
+}
+
 function useWakeLock() {
   const wakeLockRef = useRef(null)
   useEffect(() => {
@@ -447,6 +506,22 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
   const [editPlayerName, setEditPlayerName] = useState('')
 
   const isDesktop = layoutMode === 'desktop'
+
+  // --- Drag-to-rearrange sensors ---
+  const pointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  const touchSensor = useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
+  const dndSensors = useSensors(pointerSensor, touchSensor)
+
+  const handleDragEnd = useCallback((event) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    setPlayers(prev => {
+      const oldIndex = prev.findIndex(p => p.id === active.id)
+      const newIndex = prev.findIndex(p => p.id === over.id)
+      if (oldIndex === -1 || newIndex === -1) return prev
+      return arraySwap(prev, oldIndex, newIndex)
+    })
+  }, [])
 
   useWakeLock()
 
@@ -762,41 +837,47 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
         )}
 
         {/* Player grid */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: isDesktop ? (players.length === 2 ? '1fr 1fr' : 'repeat(2, 1fr)') : (players.length === 2 ? '1fr' : 'repeat(2, 1fr)'),
-          gridAutoRows: '1fr', gap: 12,
-          minHeight: isDesktop ? 'calc(100vh - 120px)' : 'calc(100vh - 200px)',
-        }}>
-          {players.map((player, index) => {
-            const rotation = player.rotation || 0
-            const needsWrapper = rotation === 90 || rotation === 270
-            const isLastOdd = index === players.length - 1 && players.length % 2 === 1
-            const cardElement = (
-              <PlayerCard
-                player={player} players={players} theme={theme} isCommander={isCommander}
-                onUpdate={(updates) => updatePlayer(player.id, updates)}
-                onRemove={() => removePlayer(player.id)}
-                isMinimized={!!minimized[player.id]}
-                onToggleMinimize={() => setMinimized(prev => ({ ...prev, [player.id]: !prev[player.id] }))}
-                onRotate={() => rotatePlayer(player.id)}
-                isDesktop={isDesktop}
-                onEditPlayer={openEditPlayer}
-              />
-            )
-            return (
-              <div key={player.id} style={{ gridColumn: isLastOdd ? 'span 2' : undefined, display: 'flex', flexDirection: 'column' }}>
-                {needsWrapper ? (
-                  <RotatedCardWrapper rotation={rotation}>{cardElement}</RotatedCardWrapper>
-                ) : (
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', transform: rotation === 180 ? 'rotate(180deg)' : 'none' }}>
-                    {cardElement}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
+        <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={players.map(p => p.id)} strategy={rectSwappingStrategy}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isDesktop ? (players.length === 2 ? '1fr 1fr' : 'repeat(2, 1fr)') : (players.length === 2 ? '1fr' : 'repeat(2, 1fr)'),
+              gridAutoRows: '1fr', gap: 12,
+              minHeight: isDesktop ? 'calc(100vh - 120px)' : 'calc(100vh - 200px)',
+            }}>
+              {players.map((player, index) => {
+                const rotation = player.rotation || 0
+                const needsWrapper = rotation === 90 || rotation === 270
+                const isLastOdd = index === players.length - 1 && players.length % 2 === 1
+                const cardElement = (
+                  <PlayerCard
+                    player={player} players={players} theme={theme} isCommander={isCommander}
+                    onUpdate={(updates) => updatePlayer(player.id, updates)}
+                    onRemove={() => removePlayer(player.id)}
+                    isMinimized={!!minimized[player.id]}
+                    onToggleMinimize={() => setMinimized(prev => ({ ...prev, [player.id]: !prev[player.id] }))}
+                    onRotate={() => rotatePlayer(player.id)}
+                    isDesktop={isDesktop}
+                    onEditPlayer={openEditPlayer}
+                  />
+                )
+                return (
+                  <SortablePlayerPanel key={player.id} id={player.id} theme={theme} gridColumn={isLastOdd ? 'span 2' : undefined}>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                      {needsWrapper ? (
+                        <RotatedCardWrapper rotation={rotation}>{cardElement}</RotatedCardWrapper>
+                      ) : (
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', transform: rotation === 180 ? 'rotate(180deg)' : 'none' }}>
+                          {cardElement}
+                        </div>
+                      )}
+                    </div>
+                  </SortablePlayerPanel>
+                )
+              })}
+            </div>
+          </SortableContext>
+        </DndContext>
       </div>
 
       {/* End Game Modal */}
