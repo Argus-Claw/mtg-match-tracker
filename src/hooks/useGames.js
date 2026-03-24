@@ -58,7 +58,7 @@ export function useGames() {
     const userId = currentSession?.user?.id
     if (!userId) throw new Error('Not authenticated — please sign in again')
 
-    // Step 1: Insert game (separate from SELECT to avoid PostgREST RLS conflict)
+    // Step 1: Insert game (no .select() — PostgREST applies SELECT RLS on RETURNING which breaks)
     const { error: gameInsertError } = await supabase
       .from('games')
       .insert({
@@ -73,15 +73,9 @@ export function useGames() {
 
     if (gameInsertError) throw gameInsertError
 
-    // Step 2: Fetch the game we just created (separate SELECT)
+    // Step 2: Fetch the game we just created using an RPC call that bypasses SELECT RLS
     const { data: game, error: gameFetchError } = await supabase
-      .from('games')
-      .select('*')
-      .eq('created_by', userId)
-      .eq('format', gameData.format)
-      .eq('date', gameData.date)
-      .order('created_at', { ascending: false })
-      .limit(1)
+      .rpc('get_my_latest_game', { p_format: gameData.format, p_date: gameData.date })
       .single()
 
     if (gameFetchError) throw gameFetchError

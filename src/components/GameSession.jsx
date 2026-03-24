@@ -151,7 +151,7 @@ function AnimatedNumber({ value, theme }) {
   )
 }
 
-function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, isMinimized, onToggleMinimize, onRotate, isDesktop, onEditPlayer }) {
+function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, isMinimized, onToggleMinimize, isDesktop, onEditPlayer }) {
   const [showCommander, setShowCommander] = useState(false)
   const [showCounters, setShowCounters] = useState(false)
   const [lifeFlash, setLifeFlash] = useState(null)
@@ -162,7 +162,8 @@ function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, i
   const deltaTimeoutRef = useRef(null)
   const deltaFadeRef = useRef(null)
   const manaColor = MANA_COLORS[player.color] || MANA_COLORS.W
-  const isDead = player.life <= 0 || player.poison >= 10
+  const commanderLethal = isCommander && player.commanderDamage && Object.values(player.commanderDamage).some(d => d >= 21)
+  const isDead = player.life <= 0 || player.poison >= 10 || commanderLethal
 
   useEffect(() => {
     if (player.life !== prevLife.current) {
@@ -240,7 +241,6 @@ function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, i
           </div>
         </div>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
-          <button onClick={handleButton(onRotate)} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, color: theme.text, cursor: 'pointer', fontSize: isDesktop ? 18 : 14, fontWeight: 700, padding: isDesktop ? '6px 14px' : '4px 10px', lineHeight: 1, minWidth: isDesktop ? 36 : 28, textAlign: 'center' }}>{'\u21BB'}</button>
           <button onClick={handleButton(onToggleMinimize)} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, color: theme.text, cursor: 'pointer', fontSize: isDesktop ? 18 : 14, fontWeight: 700, padding: isDesktop ? '6px 14px' : '4px 10px', lineHeight: 1, minWidth: isDesktop ? 36 : 28, textAlign: 'center' }}>{'\u2212'}</button>
           {players.length > 2 && (
             <button onClick={handleButton(onRemove)} style={{ background: 'rgba(248,113,113,0.15)', border: '1px solid rgba(248,113,113,0.35)', borderRadius: 6, color: '#F87171', cursor: 'pointer', fontSize: 14, fontWeight: 700, padding: '4px 10px', lineHeight: 1, minWidth: 28, textAlign: 'center' }}>{'\u2715'}</button>
@@ -360,7 +360,7 @@ function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, i
   )
 }
 
-function SortablePlayerPanel({ id, children, theme, gridColumn }) {
+function SortablePlayerPanel({ id, children, theme, gridColumn, rotation, onRotate, rotationGestureRef }) {
   const {
     attributes,
     listeners,
@@ -372,11 +372,80 @@ function SortablePlayerPanel({ id, children, theme, gridColumn }) {
     isOver,
   } = useSortable({ id })
 
+  const panelRef = useRef(null)
+  const gestureRef = useRef(null)
+  const [rotationPreview, setRotationPreview] = useState(null)
+  const rotationPreviewRef = useRef(null)
+  const isRotatingRef = useRef(false)
+  const [previewHintDeg, setPreviewHintDeg] = useState(0)
+
+  const combinedRef = useCallback((node) => {
+    setNodeRef(node)
+    panelRef.current = node
+  }, [setNodeRef])
+
+  const handlePointerDown = useCallback((e) => {
+    if (!panelRef.current) return
+    const rect = panelRef.current.getBoundingClientRect()
+    const centerX = rect.left + rect.width / 2
+    const centerY = rect.top + rect.height / 2
+    const startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX)
+
+    gestureRef.current = { centerX, centerY, startAngle, pointerId: e.pointerId }
+    isRotatingRef.current = false
+    rotationPreviewRef.current = null
+    setRotationPreview(null)
+    setPreviewHintDeg(0)
+
+    const handleMove = (me) => {
+      if (!gestureRef.current || me.pointerId !== gestureRef.current.pointerId) return
+      const { centerX, centerY, startAngle } = gestureRef.current
+      const currentAngle = Math.atan2(me.clientY - centerY, me.clientX - centerX)
+      let angleDiff = (currentAngle - startAngle) * (180 / Math.PI)
+      while (angleDiff > 180) angleDiff -= 360
+      while (angleDiff < -180) angleDiff += 360
+
+      if (Math.abs(angleDiff) > 35) {
+        isRotatingRef.current = true
+        if (rotationGestureRef) rotationGestureRef.current = true
+        const currentRot = rotation || 0
+        const steps = Math.sign(angleDiff) * Math.max(1, Math.round(Math.abs(angleDiff) / 90))
+        const snapped = ((currentRot + steps * 90) % 360 + 360) % 360
+        rotationPreviewRef.current = snapped
+        setRotationPreview(snapped)
+        setPreviewHintDeg(Math.max(-12, Math.min(12, angleDiff * 0.15)))
+      } else {
+        setPreviewHintDeg(Math.max(-8, Math.min(8, angleDiff * 0.1)))
+      }
+    }
+
+    const handleUp = (ue) => {
+      if (!gestureRef.current || ue.pointerId !== gestureRef.current.pointerId) return
+      if (isRotatingRef.current && rotationPreviewRef.current !== null) {
+        onRotate(rotationPreviewRef.current)
+      }
+      gestureRef.current = null
+      isRotatingRef.current = false
+      rotationPreviewRef.current = null
+      setRotationPreview(null)
+      setPreviewHintDeg(0)
+      document.removeEventListener('pointermove', handleMove)
+      document.removeEventListener('pointerup', handleUp)
+      document.removeEventListener('pointercancel', handleUp)
+    }
+
+    document.addEventListener('pointermove', handleMove)
+    document.addEventListener('pointerup', handleUp)
+    document.addEventListener('pointercancel', handleUp)
+  }, [rotation, onRotate, rotationGestureRef])
+
+  const isShowingRotation = isRotatingRef.current && rotationPreview !== null
+
   const style = {
-    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    outline: isOver && !isDragging ? `2px solid ${theme.accent}` : 'none',
+    transform: isShowingRotation ? undefined : (transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined),
+    transition: isShowingRotation ? 'none' : transition,
+    opacity: isShowingRotation ? 1 : (isDragging ? 0.5 : 1),
+    outline: isOver && !isDragging && !isShowingRotation ? `2px solid ${theme.accent}` : 'none',
     outlineOffset: 2,
     position: 'relative',
     display: 'flex',
@@ -384,23 +453,55 @@ function SortablePlayerPanel({ id, children, theme, gridColumn }) {
     gridColumn,
   }
 
+  const mergedListeners = {
+    ...listeners,
+    onPointerDown: (e) => {
+      handlePointerDown(e)
+      listeners?.onPointerDown?.(e)
+    },
+  }
+
   return (
-    <div ref={setNodeRef} style={style} {...attributes}>
+    <div ref={combinedRef} style={style} {...attributes}>
+      <div style={{
+        flex: 1, display: 'flex', flexDirection: 'column',
+        transform: previewHintDeg ? `rotate(${previewHintDeg}deg)` : undefined,
+        transition: previewHintDeg ? 'none' : 'transform 0.2s ease-out',
+      }}>
+        {children}
+      </div>
+      {isShowingRotation && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+          borderRadius: 16,
+          border: `2px solid ${theme.accent}`,
+          boxShadow: `0 0 20px ${theme.glow}, inset 0 0 20px ${theme.glow}`,
+          pointerEvents: 'none',
+          zIndex: 30,
+        }} />
+      )}
       <div
         ref={setActivatorNodeRef}
-        {...listeners}
+        {...mergedListeners}
         style={{
-          position: 'absolute', top: 8, left: 8, zIndex: 20,
-          cursor: 'grab', touchAction: 'none',
-          color: theme.muted, fontSize: 18, lineHeight: 1,
-          background: 'rgba(0,0,0,0.35)', borderRadius: 6,
-          padding: '2px 5px', userSelect: 'none',
+          zIndex: 20,
+          cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none',
+          color: theme.text, fontSize: 22, lineHeight: 1, letterSpacing: 2,
+          background: isShowingRotation ? `rgba(167,139,250,0.2)` : `rgba(255,255,255,0.08)`,
+          border: isShowingRotation ? `1px solid ${theme.accent}` : `1px solid rgba(255,255,255,0.15)`,
+          borderRadius: 10,
+          padding: 0, userSelect: 'none',
+          width: 48, height: 48,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          opacity: isDragging || isShowingRotation ? 1 : 0.7,
+          transition: 'opacity 0.15s, background 0.15s, border-color 0.15s',
+          boxShadow: isShowingRotation ? `0 0 12px ${theme.glow}` : '0 2px 8px rgba(0,0,0,0.3)',
+          margin: '4px auto 8px',
         }}
-        title="Drag to rearrange"
+        title="Drag to rearrange · Circular drag to rotate"
       >
-        {'\u2807'}
+        {isShowingRotation ? '\u21BB' : '\u2630'}
       </div>
-      {children}
     </div>
   )
 }
@@ -513,6 +614,10 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
   const dndSensors = useSensors(pointerSensor, touchSensor)
 
   const handleDragEnd = useCallback((event) => {
+    if (rotationGestureRef.current) {
+      rotationGestureRef.current = false
+      return
+    }
     const { active, over } = event
     if (!over || active.id === over.id) return
     setPlayers(prev => {
@@ -596,6 +701,13 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
     haptic()
     setPlayers(prev => prev.map(p => p.id === id ? { ...p, rotation: ROTATION_CYCLE[p.rotation || 0] ?? 0 } : p))
   }
+
+  const setPlayerRotation = useCallback((id, targetRotation) => {
+    haptic()
+    setPlayers(prev => prev.map(p => p.id === id ? { ...p, rotation: targetRotation } : p))
+  }, [])
+
+  const rotationGestureRef = useRef(false)
 
   const toggleLayoutMode = () => {
     const newMode = layoutMode === 'mobile' ? 'desktop' : 'mobile'
@@ -856,13 +968,12 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
                     onRemove={() => removePlayer(player.id)}
                     isMinimized={!!minimized[player.id]}
                     onToggleMinimize={() => setMinimized(prev => ({ ...prev, [player.id]: !prev[player.id] }))}
-                    onRotate={() => rotatePlayer(player.id)}
                     isDesktop={isDesktop}
                     onEditPlayer={openEditPlayer}
                   />
                 )
                 return (
-                  <SortablePlayerPanel key={player.id} id={player.id} theme={theme} gridColumn={isLastOdd ? 'span 2' : undefined}>
+                  <SortablePlayerPanel key={player.id} id={player.id} theme={theme} gridColumn={isLastOdd ? 'span 2' : undefined} rotation={rotation} onRotate={(target) => setPlayerRotation(player.id, target)} rotationGestureRef={rotationGestureRef}>
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                       {needsWrapper ? (
                         <RotatedCardWrapper rotation={rotation}>{cardElement}</RotatedCardWrapper>
