@@ -36,7 +36,7 @@ const THEMES = [
   { id: 'orzhov', name: 'Orzhov', bg: '#0E0D0B', card: '#1A1814', accent: '#D4AF37', text: '#FDE68A', muted: '#8A7744', border: '#2D2815', glow: 'rgba(212,175,55,0.15)' },
 ]
 
-const ROTATION_CYCLE = { 0: 90, 90: 270, 270: 0 }
+const ROTATION_CYCLE = { 0: 90, 90: 180, 180: 270, 270: 0 }
 
 function haptic() {
   if (navigator.vibrate) navigator.vibrate(10)
@@ -151,7 +151,7 @@ function AnimatedNumber({ value, theme }) {
   )
 }
 
-function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, isMinimized, onToggleMinimize, onRotate, isDesktop, onEditPlayer }) {
+function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, isMinimized, onToggleMinimize, isDesktop, onEditPlayer }) {
   const [showCommander, setShowCommander] = useState(false)
   const [showCounters, setShowCounters] = useState(false)
   const [lifeFlash, setLifeFlash] = useState(null)
@@ -241,7 +241,6 @@ function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, i
           </div>
         </div>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 }}>
-          <button onClick={handleButton(onRotate)} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, color: theme.text, cursor: 'pointer', fontSize: isDesktop ? 18 : 14, fontWeight: 700, padding: isDesktop ? '6px 14px' : '4px 10px', lineHeight: 1, minWidth: isDesktop ? 36 : 28, textAlign: 'center' }}>{'\u21BB'}</button>
           <button onClick={handleButton(onToggleMinimize)} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, color: theme.text, cursor: 'pointer', fontSize: isDesktop ? 18 : 14, fontWeight: 700, padding: isDesktop ? '6px 14px' : '4px 10px', lineHeight: 1, minWidth: isDesktop ? 36 : 28, textAlign: 'center' }}>{'\u2212'}</button>
           {players.length > 2 && (
             <button onClick={handleButton(onRemove)} style={{ background: 'rgba(248,113,113,0.15)', border: '1px solid rgba(248,113,113,0.35)', borderRadius: 6, color: '#F87171', cursor: 'pointer', fontSize: 14, fontWeight: 700, padding: '4px 10px', lineHeight: 1, minWidth: 28, textAlign: 'center' }}>{'\u2715'}</button>
@@ -361,7 +360,7 @@ function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, i
   )
 }
 
-function SortablePlayerPanel({ id, children, theme, gridColumn }) {
+function SortablePlayerPanel({ id, children, theme, gridColumn, onRotate }) {
   const {
     attributes,
     listeners,
@@ -390,27 +389,47 @@ function SortablePlayerPanel({ id, children, theme, gridColumn }) {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         {children}
       </div>
-      <div
-        ref={setActivatorNodeRef}
-        {...listeners}
-        style={{
-          zIndex: 20,
-          cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none',
-          color: theme.text, fontSize: 22, lineHeight: 1, letterSpacing: 2,
-          background: 'rgba(255,255,255,0.08)',
-          border: '1px solid rgba(255,255,255,0.15)',
-          borderRadius: 10,
-          padding: 0, userSelect: 'none',
-          width: 48, height: 48,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          opacity: isDragging ? 1 : 0.7,
-          transition: 'opacity 0.15s',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-          margin: '4px auto 8px',
-        }}
-        title="Drag to rearrange"
-      >
-        {'\u2630'}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, margin: '4px auto 8px' }}>
+        <button
+          onClick={(e) => { e.stopPropagation(); if (navigator.vibrate) navigator.vibrate(10); onRotate && onRotate(); }}
+          style={{
+            zIndex: 20,
+            color: theme.text, fontSize: 18, lineHeight: 1,
+            background: 'rgba(255,255,255,0.08)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: 10,
+            padding: 0, userSelect: 'none', cursor: 'pointer',
+            width: 48, height: 48,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            opacity: 0.7,
+            transition: 'opacity 0.15s',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          }}
+          title="Rotate"
+        >
+          {'\u21BB'}
+        </button>
+        <div
+          ref={setActivatorNodeRef}
+          {...listeners}
+          style={{
+            zIndex: 20,
+            cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none',
+            color: theme.text, fontSize: 22, lineHeight: 1, letterSpacing: 2,
+            background: 'rgba(255,255,255,0.08)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: 10,
+            padding: 0, userSelect: 'none',
+            width: 48, height: 48,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            opacity: isDragging ? 1 : 0.7,
+            transition: 'opacity 0.15s',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          }}
+          title="Drag to rearrange"
+        >
+          {'\u2630'}
+        </div>
       </div>
     </div>
   )
@@ -869,13 +888,12 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
                     onRemove={() => removePlayer(player.id)}
                     isMinimized={!!minimized[player.id]}
                     onToggleMinimize={() => setMinimized(prev => ({ ...prev, [player.id]: !prev[player.id] }))}
-                    onRotate={() => rotatePlayer(player.id)}
                     isDesktop={isDesktop}
                     onEditPlayer={openEditPlayer}
                   />
                 )
                 return (
-                  <SortablePlayerPanel key={player.id} id={player.id} theme={theme} gridColumn={isLastOdd ? 'span 2' : undefined}>
+                  <SortablePlayerPanel key={player.id} id={player.id} theme={theme} gridColumn={isLastOdd ? 'span 2' : undefined} onRotate={() => rotatePlayer(player.id)}>
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                       {needsWrapper ? (
                         <RotatedCardWrapper rotation={rotation}>{cardElement}</RotatedCardWrapper>
