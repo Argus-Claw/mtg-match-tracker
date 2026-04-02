@@ -48,6 +48,8 @@ export function useGameSession() {
   const sessionCodeRef = useRef(null) // for reconnection in visibility handler
   const isHostRef = useRef(true)
   const broadcastFullStateRef = useRef(null) // latest broadcastFullState for heartbeat
+  const guestLocalStateRef = useRef(null) // guest's local player state for resync after reconnect
+  const claimedPlayerIdRef = useRef(null)
 
   // Register callbacks
   const setOnRemoteUpdate = useCallback((fn) => { onRemoteUpdateRef.current = fn }, [])
@@ -77,6 +79,40 @@ export function useGameSession() {
     channel.on('broadcast', { event: 'full_state' }, ({ payload }) => {
       lastReceivedRef.current = Date.now()
       if (!asHost && onFullStateRef.current) {
+        // Before applying host state, re-send our local state if we have pending changes
+        // This handles the case where guest tapped while disconnected
+        if (guestLocalStateRef.current && claimedPlayerIdRef.current) {
+          const localPlayer = guestLocalStateRef.current
+          const remotePlayer = payload.players?.find(p => String(p.id) === String(claimedPlayerIdRef.current))
+          if (remotePlayer && localPlayer.life !== remotePlayer.life) {
+            // Our local state differs — re-send our player state to host
+            channel.send({
+              type: 'broadcast',
+              event: 'player_update',
+              payload: {
+                playerId: claimedPlayerIdRef.current,
+                updates: {
+                  life: localPlayer.life,
+                  poison: localPlayer.poison,
+                  energy: localPlayer.energy,
+                  experience: localPlayer.experience,
+                  commanderDamage: localPlayer.commanderDamage,
+                },
+                type: 'player_update',
+              },
+            })
+            // Don't apply host state for our player — keep local optimistic state
+            // The host will merge our update and broadcast back the corrected state
+            const correctedPayload = {
+              ...payload,
+              players: payload.players.map(p =>
+                String(p.id) === String(claimedPlayerIdRef.current) ? { ...p, ...localPlayer } : p
+              ),
+            }
+            onFullStateRef.current(correctedPayload)
+            return
+          }
+        }
         onFullStateRef.current(payload)
       }
     })
@@ -86,6 +122,36 @@ export function useGameSession() {
       lastReceivedRef.current = Date.now()
       // Heartbeat carries full state for guests — treat same as full_state
       if (!asHost && onFullStateRef.current && payload.players) {
+        // Same resync logic as full_state
+        if (guestLocalStateRef.current && claimedPlayerIdRef.current) {
+          const localPlayer = guestLocalStateRef.current
+          const remotePlayer = payload.players?.find(p => String(p.id) === String(claimedPlayerIdRef.current))
+          if (remotePlayer && localPlayer.life !== remotePlayer.life) {
+            channel.send({
+              type: 'broadcast',
+              event: 'player_update',
+              payload: {
+                playerId: claimedPlayerIdRef.current,
+                updates: {
+                  life: localPlayer.life,
+                  poison: localPlayer.poison,
+                  energy: localPlayer.energy,
+                  experience: localPlayer.experience,
+                  commanderDamage: localPlayer.commanderDamage,
+                },
+                type: 'player_update',
+              },
+            })
+            const correctedPayload = {
+              ...payload,
+              players: payload.players.map(p =>
+                String(p.id) === String(claimedPlayerIdRef.current) ? { ...p, ...localPlayer } : p
+              ),
+            }
+            onFullStateRef.current(correctedPayload)
+            return
+          }
+        }
         onFullStateRef.current(payload)
       }
     })
@@ -301,8 +367,10 @@ export function useGameSession() {
     return () => clearInterval(heartbeatTimerRef.current)
   }, [isMultiDevice, isHost])
 
-  // Guest: send a player update to host
+  // Guest: send a player update to host (and cache locally for resync)
   const sendPlayerUpdate = useCallback((playerId, updates) => {
+    // Cache the latest state for resync after reconnect
+    guestLocalStateRef.current = { ...(guestLocalStateRef.current || {}), ...updates }
     if (!channelRef.current || !isMultiDevice) return
     channelRef.current.send({
       type: 'broadcast',
@@ -318,6 +386,7 @@ export function useGameSession() {
     const userId = user?.id
 
     setClaimedPlayerId(playerId)
+    claimedPlayerIdRef.current = playerId
 
     channelRef.current.send({
       type: 'broadcast',
