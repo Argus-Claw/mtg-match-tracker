@@ -104,7 +104,7 @@ export default function JoinGame() {
         <div className="join-game__select">
           <h2>Join Game</h2>
           <p className="join-game__format">{session?.format} &middot; {gameState.players?.length} players</p>
-          <p className="join-game__hint">Tap your name to join as that player</p>
+          <p className="join-game__hint">Tap your name to join as that player. If you disconnected, tap your slot to rejoin.</p>
 
           <div className="join-game__players">
             {gameState.players?.map(p => {
@@ -114,12 +114,11 @@ export default function JoinGame() {
                 <button
                   key={p.id}
                   className={`join-game__player ${isSelected ? 'join-game__player--selected' : ''} ${isClaimed ? 'join-game__player--claimed' : ''}`}
-                  onClick={() => !isClaimed && setSelectedPlayerId(p.id)}
-                  disabled={isClaimed}
+                  onClick={() => setSelectedPlayerId(p.id)}
                 >
                   <span className="join-game__player-name">{p.name}</span>
                   <span className="join-game__player-life">{p.life} life</span>
-                  {isClaimed && <span className="join-game__player-tag">Connected</span>}
+                  {isClaimed && !isSelected && <span className="join-game__player-tag">Active</span>}
                   {isSelected && <span className="join-game__player-tag join-game__player-tag--you">You</span>}
                 </button>
               )
