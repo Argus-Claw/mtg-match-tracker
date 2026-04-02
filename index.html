@@ -16,6 +16,18 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // GitHub Pages SPA redirect handler
+      (function() {
+        var params = new URLSearchParams(window.location.search);
+        var redirect = params.get('p');
+        if (redirect) {
+          params.delete('p');
+          var newUrl = window.location.origin + (window.location.pathname.replace(/\/$/, '')) + redirect + (params.toString() ? '?' + params.toString() : '') + window.location.hash;
+          history.replaceState(null, '', newUrl);
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

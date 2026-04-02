@@ -252,7 +252,7 @@ export default function NewGame() {
         getPlayerLabel={getPlayerLabel}
         user={user}
         friends={friends}
-        onEndGame={() => navigate('/games')}
+        onEndGame={(action) => action === 'new-game' ? (setGameStarted(false), setResumeState(null)) : navigate('/games')}
         resumeState={resumeState}
       />
     )

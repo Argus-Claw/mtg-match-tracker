@@ -13,6 +13,7 @@ import GameHistory from './pages/GameHistory'
 import Stats from './pages/Stats'
 import Friends from './pages/Friends'
 import Profile from './pages/Profile'
+import JoinGame from './pages/JoinGame'
 
 function AuthRedirect({ children }) {
   const { user, loading } = useAuth()
@@ -104,6 +105,9 @@ export default function App() {
                     </ProtectedRoute>
                   }
                 />
+
+                {/* Public join route (no auth required) */}
+                <Route path="/join/:sessionCode" element={<JoinGame />} />
 
                 {/* Fallback */}
                 <Route path="*" element={<Navigate to="/" replace />} />

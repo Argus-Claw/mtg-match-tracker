@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>MTG Match Tracker</title>
+  <script>
+    // SPA redirect for GitHub Pages
+    // Converts /join/CODE paths to query params so index.html can handle them
+    var path = window.location.pathname;
+    var search = window.location.search;
+    var hash = window.location.hash;
+    // Redirect to index with the original path stored in a query param
+    var base = '/mtg-match-tracker/';
+    var repo = path.indexOf(base) === 0 ? path.slice(base.length) : path.slice(1);
+    window.location.replace(
+      window.location.origin + base + '?p=/' + repo + search + hash
+    );
+  </script>
+</head>
+<body>
+</body>
+</html>

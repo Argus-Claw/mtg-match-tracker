@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { useGames } from '../hooks/useGames'
+import { useGameSession } from '../hooks/useGameSession'
+import { QRCodeSVG } from 'qrcode.react'
 import {
   DndContext,
   closestCenter,
@@ -37,6 +39,17 @@ const THEMES = [
 ]
 
 const ROTATION_CYCLE = { 0: 90, 90: 180, 180: 270, 270: 0 }
+
+// Normalize commanderDamage entry: supports legacy (number) and new (array of trackers) formats
+function getCmdrTrackers(commanderDamage, oppId) {
+  const entry = commanderDamage[oppId]
+  if (!entry) return [{ id: 1, name: 'Cmdr 1', damage: 0 }]
+  if (typeof entry === 'number') return [{ id: 1, name: 'Cmdr 1', damage: entry }]
+  if (Array.isArray(entry)) return entry.length === 0 ? [{ id: 1, name: 'Cmdr 1', damage: 0 }] : entry
+  return [{ id: 1, name: 'Cmdr 1', damage: 0 }]
+}
+
+let nextCmdrId = 100
 
 function haptic() {
   if (navigator.vibrate) navigator.vibrate(10)
@@ -151,7 +164,7 @@ function AnimatedNumber({ value, theme }) {
   )
 }
 
-function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, isMinimized, onToggleMinimize, isDesktop, onEditPlayer }) {
+function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, isMinimized, onToggleMinimize, isDesktop, onEditPlayer, isConnected, isReadOnly }) {
   const [showCommander, setShowCommander] = useState(false)
   const [showCounters, setShowCounters] = useState(false)
   const [lifeFlash, setLifeFlash] = useState(null)
@@ -162,7 +175,7 @@ function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, i
   const deltaTimeoutRef = useRef(null)
   const deltaFadeRef = useRef(null)
   const manaColor = MANA_COLORS[player.color] || MANA_COLORS.W
-  const commanderLethal = isCommander && player.commanderDamage && Object.values(player.commanderDamage).some(d => d >= 21)
+  const commanderLethal = isCommander && player.commanderDamage && Object.keys(player.commanderDamage).some(oppId => getCmdrTrackers(player.commanderDamage, oppId).some(t => t.damage >= 21))
   const isDead = player.life <= 0 || player.poison >= 10 || commanderLethal
 
   useEffect(() => {
@@ -184,11 +197,17 @@ function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, i
     const centerX = rect.left + rect.width / 2
     const centerY = rect.top + rect.height / 2
     const rotation = player.rotation || 0
+    const relX = (e.clientX - centerX) / (rect.width / 2)
+    const relY = (e.clientY - centerY) / (rect.height / 2)
+    const isHorizontal = Math.abs(relX) >= Math.abs(relY)
     let isIncrease
-    if (rotation === 90) isIncrease = e.clientY >= centerY
-    else if (rotation === 270) isIncrease = e.clientY < centerY
-    else if (rotation === 180) isIncrease = e.clientX < centerX
-    else isIncrease = e.clientX >= centerX
+    if (isHorizontal) {
+      const isRight = relX >= 0
+      isIncrease = (rotation === 0 || rotation === 90) ? isRight : !isRight
+    } else {
+      const isBottom = relY >= 0
+      isIncrease = (rotation === 0 || rotation === 270) ? !isBottom : isBottom
+    }
     const change = isIncrease ? 1 : -1
     onUpdate({ life: player.life + change })
     clearTimeout(deltaTimeoutRef.current)
@@ -233,7 +252,8 @@ function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, i
       <div style={{ height: 3, background: `linear-gradient(90deg, ${manaColor.color}, ${manaColor.accent}, transparent)` }} />
       <div style={{ padding: isDesktop ? '16px 20px 0' : (players.length >= 3 ? '8px 8px 0' : '12px 16px 0'), display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: isDesktop ? 8 : 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: players.length >= 3 ? 4 : 8, overflow: 'hidden', flex: 1, minWidth: 0 }}>
-          <span onClick={() => onEditPlayer && onEditPlayer(player)} style={{ color: theme.text, fontFamily: "'Cinzel', serif", fontSize: isDesktop ? 22 : 14, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.05em', borderBottom: `1px dashed ${theme.muted}44`, paddingBottom: 1 }}>{player.name}</span>
+          {isConnected && <ConnectedDot connected={true} size={isDesktop ? 10 : 8} />}
+          <span onClick={() => onEditPlayer && onEditPlayer(player)} style={{ color: theme.text, fontFamily: "'Cinzel', serif", fontSize: isDesktop ? 22 : 14, fontWeight: 700, cursor: onEditPlayer ? 'pointer' : 'default', letterSpacing: '0.05em', borderBottom: onEditPlayer ? `1px dashed ${theme.muted}44` : 'none', paddingBottom: 1, opacity: isReadOnly ? 0.7 : 1 }}>{player.name}</span>
           <div style={{ display: 'flex', gap: 3 }}>
             {Object.entries(MANA_COLORS).map(([key, mc]) => (
               <div key={key} onClick={handleButton(() => onUpdate({ color: key }))} style={{ width: isDesktop ? 20 : 14, height: isDesktop ? 20 : 14, borderRadius: '50%', background: mc.color, cursor: 'pointer', border: player.color === key ? `2px solid ${theme.text}` : '2px solid transparent', transition: 'all 0.2s' }} />
@@ -254,8 +274,22 @@ function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, i
         background: lifeFlash === 'gain' ? 'rgba(74,222,128,0.15)' : lifeFlash === 'loss' ? 'rgba(248,113,113,0.15)' : 'transparent',
         transition: 'background 0.8s ease-out',
       }}>
-        <span style={{ position: 'absolute', pointerEvents: 'none', fontSize: isDesktop ? 48 : 28, fontWeight: 300, color: theme.muted, opacity: 0.25, left: isDesktop ? 24 : 16, top: '50%', transform: 'translateY(-50%)' }}>{'\u2212'}</span>
-        <span style={{ position: 'absolute', pointerEvents: 'none', fontSize: isDesktop ? 48 : 28, fontWeight: 300, color: theme.muted, opacity: 0.25, right: isDesktop ? 24 : 16, top: '50%', transform: 'translateY(-50%)' }}>+</span>
+        {/* Tap zone indicators — rotation-aware */}
+        {(() => {
+          const r = player.rotation || 0
+          const leftSign = (r === 0 || r === 90) ? '−' : '+'
+          const rightSign = (r === 0 || r === 90) ? '+' : '−'
+          const topSign = (r === 0 || r === 270) ? '+' : '−'
+          const bottomSign = (r === 0 || r === 270) ? '−' : '+'
+          const plusColor = 'rgba(74,222,128,0.45)'
+          const minusColor = 'rgba(248,113,113,0.45)'
+          return <>
+            <span style={{ position: 'absolute', pointerEvents: 'none', fontSize: isDesktop ? 48 : 28, fontWeight: 700, color: leftSign === '+' ? plusColor : minusColor, left: isDesktop ? 24 : 16, top: '50%', transform: 'translateY(-50%)' }}>{leftSign}</span>
+            <span style={{ position: 'absolute', pointerEvents: 'none', fontSize: isDesktop ? 48 : 28, fontWeight: 700, color: rightSign === '+' ? plusColor : minusColor, right: isDesktop ? 24 : 16, top: '50%', transform: 'translateY(-50%)' }}>{rightSign}</span>
+            <span style={{ position: 'absolute', pointerEvents: 'none', fontSize: isDesktop ? 36 : 22, fontWeight: 700, color: topSign === '+' ? plusColor : minusColor, top: isDesktop ? 12 : 8, left: '50%', transform: 'translateX(-50%)' }}>{topSign}</span>
+            <span style={{ position: 'absolute', pointerEvents: 'none', fontSize: isDesktop ? 36 : 22, fontWeight: 700, color: bottomSign === '+' ? plusColor : minusColor, bottom: isDesktop ? 12 : 8, left: '50%', transform: 'translateX(-50%)' }}>{bottomSign}</span>
+          </>
+        })()}
         {pendingDelta !== 0 && (
           <div style={{
             fontSize: isDesktop ? 36 : 22, fontWeight: 700, fontFamily: "'Cinzel', serif",
@@ -330,16 +364,48 @@ function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, i
         <div style={{ padding: isDesktop ? 16 : 12, borderTop: `1px solid ${theme.border}`, background: 'rgba(0,0,0,0.2)' }}>
           <div style={{ fontSize: isDesktop ? 14 : 10, color: theme.muted, marginBottom: isDesktop ? 12 : 8, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Commander Damage Taken From:</div>
           {players.filter(p => p.id !== player.id).map(opp => {
-            const dmg = player.commanderDamage[opp.id] || 0
-            const lethal = dmg >= 21
+            const trackers = getCmdrTrackers(player.commanderDamage, opp.id)
+            const hasMultiple = trackers.length > 1
             return (
-              <div key={opp.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: isDesktop ? '6px 0' : '4px 0', opacity: lethal ? 0.5 : 1 }}>
-                <span style={{ color: lethal ? '#EF4444' : theme.text, fontSize: isDesktop ? 18 : 13 }}>{opp.name} {lethal && '\u{1F480}'}</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: isDesktop ? 12 : 8 }}>
-                  <button onClick={handleButton(() => { const newDmg = { ...player.commanderDamage, [opp.id]: Math.max(0, dmg - 1) }; onUpdate({ commanderDamage: newDmg }) })} style={{ width: isDesktop ? 36 : 24, height: isDesktop ? 36 : 24, borderRadius: 4, background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.2)', color: '#F87171', fontSize: isDesktop ? 20 : 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{'\u2212'}</button>
-                  <span style={{ color: lethal ? '#EF4444' : theme.accent, fontFamily: "'Cinzel', serif", fontSize: isDesktop ? 22 : 16, fontWeight: 700, minWidth: isDesktop ? 28 : 20, textAlign: 'center' }}>{dmg}</span>
-                  <button onClick={handleButton(() => { const newDmg = { ...player.commanderDamage, [opp.id]: dmg + 1 }; onUpdate({ commanderDamage: newDmg, life: player.life - 1 }) })} style={{ width: isDesktop ? 36 : 24, height: isDesktop ? 36 : 24, borderRadius: 4, background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.2)', color: '#4ADE80', fontSize: isDesktop ? 20 : 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+              <div key={opp.id} style={{ marginBottom: isDesktop ? 8 : 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: hasMultiple ? (isDesktop ? 4 : 2) : 0 }}>
+                  <span style={{ color: theme.text, fontSize: isDesktop ? 16 : 12, fontWeight: 700 }}>{opp.name}</span>
+                  <button onClick={handleButton(() => {
+                    const newTrackers = [...trackers, { id: ++nextCmdrId, name: `Cmdr ${trackers.length + 1}`, damage: 0 }]
+                    onUpdate({ commanderDamage: { ...player.commanderDamage, [opp.id]: newTrackers } })
+                  })} style={{ padding: isDesktop ? '2px 8px' : '1px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.05)', border: `1px solid ${theme.border}`, color: theme.muted, fontSize: isDesktop ? 11 : 9, cursor: 'pointer', fontFamily: "'Cinzel', serif" }}>+ Cmdr</button>
                 </div>
+                {trackers.map((tracker, tIdx) => {
+                  const lethal = tracker.damage >= 21
+                  return (
+                    <div key={tracker.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: isDesktop ? '4px 0' : '3px 0', paddingLeft: hasMultiple ? (isDesktop ? 12 : 8) : 0, opacity: lethal ? 0.5 : 1 }}>
+                      <span onClick={hasMultiple ? handleButton(() => {
+                        const name = prompt('Commander name:', tracker.name)
+                        if (name && name !== tracker.name) {
+                          const newTrackers = trackers.map((t, i) => i === tIdx ? { ...t, name } : t)
+                          onUpdate({ commanderDamage: { ...player.commanderDamage, [opp.id]: newTrackers } })
+                        }
+                      }) : undefined} style={{ color: lethal ? '#EF4444' : theme.muted, fontSize: isDesktop ? 14 : 11, cursor: hasMultiple ? 'pointer' : 'default', borderBottom: hasMultiple ? `1px dashed ${theme.border}` : 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {hasMultiple && <span>{tracker.name}</span>}
+                        {lethal && '\u{1F480}'}
+                        {hasMultiple && trackers.length > 1 && (
+                          <span onClick={(e) => { e.stopPropagation(); haptic(); const newTrackers = trackers.filter((_, i) => i !== tIdx); onUpdate({ commanderDamage: { ...player.commanderDamage, [opp.id]: newTrackers.length ? newTrackers : [{ id: 1, name: 'Cmdr 1', damage: 0 }] } }) }} style={{ color: '#F87171', fontSize: isDesktop ? 10 : 8, cursor: 'pointer', marginLeft: 2 }}>{'\u2716'}</span>
+                        )}
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: isDesktop ? 12 : 8 }}>
+                        <button onClick={handleButton(() => {
+                          const newTrackers = trackers.map((t, i) => i === tIdx ? { ...t, damage: Math.max(0, t.damage - 1) } : t)
+                          onUpdate({ commanderDamage: { ...player.commanderDamage, [opp.id]: newTrackers } })
+                        })} style={{ width: isDesktop ? 36 : 24, height: isDesktop ? 36 : 24, borderRadius: 4, background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.2)', color: '#F87171', fontSize: isDesktop ? 20 : 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{'\u2212'}</button>
+                        <span style={{ color: lethal ? '#EF4444' : theme.accent, fontFamily: "'Cinzel', serif", fontSize: isDesktop ? 22 : 16, fontWeight: 700, minWidth: isDesktop ? 28 : 20, textAlign: 'center' }}>{tracker.damage}</span>
+                        <button onClick={handleButton(() => {
+                          const newTrackers = trackers.map((t, i) => i === tIdx ? { ...t, damage: t.damage + 1 } : t)
+                          onUpdate({ commanderDamage: { ...player.commanderDamage, [opp.id]: newTrackers }, life: player.life - 1 })
+                        })} style={{ width: isDesktop ? 36 : 24, height: isDesktop ? 36 : 24, borderRadius: 4, background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.2)', color: '#4ADE80', fontSize: isDesktop ? 20 : 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )
           })}
@@ -466,20 +532,45 @@ function toggleFullscreen() {
 
 const ACTIVE_GAME_KEY = 'mtg-active-game'
 
+// Share link icon
+function ShareIcon({ size = 16 }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+}
+
+// Connected indicator dot
+function ConnectedDot({ connected, size = 8 }) {
+  return <span style={{ display: 'inline-block', width: size, height: size, borderRadius: '50%', background: connected ? '#4ADE80' : 'transparent', border: connected ? 'none' : '1px solid rgba(255,255,255,0.2)', flexShrink: 0 }} />
+}
+
+// Build the share URL base from the current location
+function getShareUrlBase() {
+  // Use VITE_SHARE_URL if configured, otherwise derive from current origin + base
+  const customBase = import.meta.env.VITE_SHARE_URL
+  if (customBase) return customBase.replace(/\/$/, '')
+  return window.location.origin + (import.meta.env.BASE_URL || '/').replace(/\/$/, '')
+}
+
 // --- Main GameSession Component ---
-export default function GameSession({ format, startingLife, setupPlayers, getPlayerLabel, user, friends, onEndGame, resumeState }) {
+export default function GameSession({ format, startingLife, setupPlayers, getPlayerLabel, user, friends, onEndGame, resumeState, multiplayerSession: externalSession, guestClaimedPlayerId, initialRemoteState }) {
   const { addToast } = useToast()
   const { createGame } = useGames()
 
+  // Multiplayer — use external session (guest) or create own (host)
+  const ownSession = useGameSession()
+  const mp = externalSession || ownSession
+  const isGuest = !!externalSession
+  const isGuestView = isGuest && !!guestClaimedPlayerId
+
   const isCommander = format === 'Commander' || format === 'Brawl'
 
-  // Build initial players from setup data (or restore from resumeState)
+  // Build initial players from setup data, resumeState, or remote state (guest)
   const [players, setPlayers] = useState(() => {
+    if (initialRemoteState?.players) return initialRemoteState.players
     if (resumeState?.players) return resumeState.players
     const colors = Object.keys(MANA_COLORS)
     return setupPlayers.map((sp, i) => ({
       id: sp.id,
-      setupId: sp.id, // keep reference to setup player
+      setupId: sp.id,
       user_id: sp.user_id,
       guest_name: sp.guest_name,
       name: getPlayerLabel(sp, i),
@@ -524,6 +615,7 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
 
   // End game state
   const [showEndModal, setShowEndModal] = useState(false)
+  const [gameSaved, setGameSaved] = useState(false) // post-save state for Run It Back
   const [showAbandonConfirm, setShowAbandonConfirm] = useState(false)
   const [winners, setWinners] = useState({})
   const [endNotes, setEndNotes] = useState('')
@@ -534,6 +626,13 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
   const [editDeckName, setEditDeckName] = useState('')
   const [editCommanderName, setEditCommanderName] = useState('')
   const [editPlayerName, setEditPlayerName] = useState('')
+
+  // Share/multiplayer state
+  const [showShareModal, setShowShareModal] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const [expandedOpponent, setExpandedOpponent] = useState(null) // for guest compact view
+  const [shareUrl, setShareUrl] = useState('')
+  const [copied, setCopied] = useState(false)
 
   const isDesktop = layoutMode === 'desktop'
 
@@ -565,8 +664,9 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
     return () => document.documentElement.removeAttribute('data-game-fullscreen')
   }, [hideNav])
 
-  // Save game state to localStorage for resume functionality
+  // Save game state to localStorage for resume functionality (host/single-player only)
   useEffect(() => {
+    if (isGuestView) return // guests don't save to localStorage
     const saveState = {
       players,
       format,
@@ -578,7 +678,7 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
       timestamp: Date.now(),
     }
     localStorage.setItem(ACTIVE_GAME_KEY, JSON.stringify(saveState))
-  }, [players, format, startingLife, turnCount, stormCount, theme, layoutMode])
+  }, [players, format, startingLife, turnCount, stormCount, theme, layoutMode, isGuestView])
 
   // Save theme preference
   useEffect(() => {
@@ -593,11 +693,126 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
     return () => { document.removeEventListener('fullscreenchange', handler); document.removeEventListener('webkitfullscreenchange', handler) }
   }, [])
 
+  // --- Multiplayer: Host broadcasts full state on every change ---
+  const broadcastTimeoutRef = useRef(null)
+  useEffect(() => {
+    if (!mp.isMultiDevice || !mp.isHost) return
+    clearTimeout(broadcastTimeoutRef.current)
+    broadcastTimeoutRef.current = setTimeout(() => {
+      mp.broadcastFullState({
+        players,
+        turnCount,
+        stormCount,
+        format,
+        startingLife,
+        themeId: theme.id,
+      })
+    }, 50) // debounce 50ms
+    return () => clearTimeout(broadcastTimeoutRef.current)
+  }, [players, turnCount, stormCount, mp.isMultiDevice, mp.isHost]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- Multiplayer: Host receives guest player updates ---
+  useEffect(() => {
+    if (!mp.isMultiDevice || !mp.isHost) return
+    mp.setOnRemoteUpdate((payload) => {
+      if (payload.type === 'request_state') {
+        // A guest just joined — send current state
+        mp.broadcastFullState({
+          players,
+          turnCount,
+          stormCount,
+          format,
+          startingLife,
+          themeId: theme.id,
+        })
+        return
+      }
+      if (payload.type === 'player_update') {
+        const { playerId, updates } = payload
+        // Apply guest update — player ID matching is sufficient authorization
+        // (only the guest who claimed this player sends updates for it)
+        // Use String() comparison to handle any type mismatch from serialization
+        setPlayers(prev => prev.map(p => String(p.id) === String(playerId) ? { ...p, ...updates } : p))
+      }
+    })
+  }, [mp.isMultiDevice, mp.isHost, players, turnCount, stormCount, mp.connectedPlayers]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- Multiplayer: Guest receives full state from host ---
+  useEffect(() => {
+    if (!mp.isMultiDevice || mp.isHost) return
+    mp.setOnFullState((payload) => {
+      if (payload.players) setPlayers(payload.players)
+      if (payload.turnCount !== undefined) setTurnCount(payload.turnCount)
+      if (payload.stormCount !== undefined) setStormCount(payload.stormCount)
+      if (payload.connectedPlayers) mp.setConnectedPlayers(payload.connectedPlayers)
+    })
+  }, [mp.isMultiDevice, mp.isHost]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- Share Game handler ---
+  const handleShareGame = async () => {
+    if (mp.isMultiDevice) {
+      // Already sharing — just show the modal
+      setShowShareModal(true)
+      return
+    }
+    setSharing(true)
+    try {
+      const { code } = await mp.createSession(format, startingLife)
+      const url = `${getShareUrlBase()}/join/${code}`
+      setShareUrl(url)
+      setShowShareModal(true)
+      // Broadcast initial state to any early joiners
+      setTimeout(() => {
+        mp.broadcastFullState({
+          players,
+          turnCount,
+          stormCount,
+          format,
+          startingLife,
+          themeId: theme.id,
+        })
+      }, 500)
+    } catch (err) {
+      addToast(err.message || 'Failed to share game', 'error')
+    } finally {
+      setSharing(false)
+    }
+  }
+
+  const copyShareUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Fallback
+      const input = document.createElement('input')
+      input.value = shareUrl
+      document.body.appendChild(input)
+      input.select()
+      document.execCommand('copy')
+      document.body.removeChild(input)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
   const logAction = useCallback((action) => {
     setGameLog(prev => [{ action, time: new Date().toLocaleTimeString(), turn: turnCount }, ...prev].slice(0, 100))
   }, [turnCount])
 
   const updatePlayer = useCallback((id, updates) => {
+    // Guest permission check: can only modify own claimed player
+    if (isGuestView && id !== guestClaimedPlayerId) return
+
+    // If guest, send update to host AND update local state optimistically
+    if (isGuestView) {
+      mp.sendPlayerUpdate(id, updates)
+      // Optimistic local update so the tap feels instant
+      setPlayers(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p))
+      return
+    }
+
     setPlayers(prev => prev.map(p => {
       if (p.id !== id) return p
       const updated = { ...p, ...updates }
@@ -607,18 +822,20 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
       if (updates.experience !== undefined && updates.experience !== p.experience) logAction(`${p.name}: ${p.experience} \u2192 ${updates.experience} experience`)
       if (updates.commanderDamage !== undefined) {
         Object.keys(updates.commanderDamage).forEach(oppId => {
-          const oldDmg = p.commanderDamage[oppId] || 0
-          const newDmg = updates.commanderDamage[oppId] || 0
-          if (newDmg !== oldDmg) {
+          const oldTrackers = getCmdrTrackers(p.commanderDamage, oppId)
+          const newTrackers = getCmdrTrackers(updates.commanderDamage, oppId)
+          const oldTotal = oldTrackers.reduce((s, t) => s + t.damage, 0)
+          const newTotal = newTrackers.reduce((s, t) => s + t.damage, 0)
+          if (newTotal !== oldTotal) {
             const opp = prev.find(pl => String(pl.id) === String(oppId))
             const oppName = opp ? opp.name : `Player ${oppId}`
-            logAction(`${p.name}: took ${Math.abs(newDmg - oldDmg)} commander damage from ${oppName}`)
+            logAction(`${p.name}: took ${Math.abs(newTotal - oldTotal)} commander damage from ${oppName}`)
           }
         })
       }
       return updated
     }))
-  }, [logAction])
+  }, [logAction, isGuestView, guestClaimedPlayerId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const removePlayer = (id) => { if (players.length <= 2) return; setPlayers(players.filter(p => p.id !== id)) }
 
@@ -715,10 +932,11 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
         const cmdDmgDealt = {}
         players.forEach(other => {
           if (other.id === p.id) return
-          const dmgFromP = other.commanderDamage[p.id] || 0
-          if (dmgFromP > 0) {
+          const trackers = getCmdrTrackers(other.commanderDamage, p.id)
+          const totalDmg = trackers.reduce((s, t) => s + t.damage, 0)
+          if (totalDmg > 0) {
             const targetKey = other.user_id || `guest-${other.id}`
-            cmdDmgDealt[targetKey] = dmgFromP
+            cmdDmgDealt[targetKey] = totalDmg
           }
         })
 
@@ -739,7 +957,7 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
       await createGame(gameData, playerData)
       localStorage.removeItem(ACTIVE_GAME_KEY)
       addToast('Game saved!', 'success')
-      onEndGame()
+      setGameSaved(true)
     } catch (err) {
       addToast(err.message || 'Failed to save game', 'error')
     } finally {
@@ -747,8 +965,34 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
     }
   }
 
+  const handleRunItBack = () => {
+    // Reset all players to starting life, clear counters, keep names/decks
+    setPlayers(prev => prev.map(p => ({
+      ...p,
+      life: startingLife,
+      poison: 0,
+      energy: 0,
+      experience: 0,
+      commanderDamage: {},
+    })))
+    setTurnCount(1)
+    setStormCount(0)
+    setGameLog([])
+    setWinners({})
+    setEndNotes('')
+    setGameSaved(false)
+    setShowEndModal(false)
+    addToast('New game — same players, same format. Let\'s go!', 'success')
+  }
+
+  const handleDoneAfterSave = () => {
+    if (mp.isMultiDevice) mp.endSession()
+    onEndGame()
+  }
+
   const handleAbandonGame = () => {
     localStorage.removeItem(ACTIVE_GAME_KEY)
+    if (mp.isMultiDevice) mp.endSession()
     onEndGame()
   }
 
@@ -765,6 +1009,14 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
         {/* Header */}
         <div style={{ textAlign: 'center', paddingTop: isDesktop ? 8 : (players.length >= 3 ? 4 : 12), paddingBottom: isDesktop ? 8 : (players.length >= 3 ? 8 : 16) }}>
           <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: '0.12em', color: theme.accent, margin: 0, textTransform: 'uppercase', textShadow: `0 0 30px ${theme.glow}` }}>{'\u27E1'} {format} {'\u27E1'}</h1>
+          {mp.isMultiDevice && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 4 }}>
+              <ConnectedDot connected={true} size={6} />
+              <span style={{ fontSize: 10, color: '#4ADE80', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                {isGuestView ? 'Connected' : `Shared${Object.keys(mp.connectedPlayers).length > 0 ? ` \u00B7 ${Object.keys(mp.connectedPlayers).length} joined` : ''}`}
+              </span>
+            </div>
+          )}
           <div style={{ fontSize: 11, color: theme.muted, letterSpacing: '0.15em', marginTop: 4, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: 12 }}>
               <span onClick={() => { haptic(); setTurnCount(Math.max(1, turnCount - 1)) }} style={{ cursor: 'pointer', padding: '0 4px', fontSize: 14, color: '#F87171' }}>{'\u2212'}</span>
@@ -788,8 +1040,10 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
           <button onClick={() => { haptic(); setHideNav(!hideNav) }} style={{ padding: '6px 14px', borderRadius: 8, background: hideNav ? theme.accent : 'transparent', border: `1px solid ${theme.border}`, color: hideNav ? theme.bg : theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{hideNav ? <EyeOffIcon size={12} /> : <EyeIcon size={12} />} Nav</button>
           <button onClick={toggleFullscreen} style={{ padding: '6px 14px', borderRadius: 8, background: isFullscreen ? theme.accent : 'transparent', border: `1px solid ${theme.border}`, color: isFullscreen ? theme.bg : theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}><FullscreenIcon size={12} /> {isFullscreen ? 'Exit' : 'Full'}</button>
           <button onClick={toggleLayoutMode} style={{ padding: '6px 14px', borderRadius: 8, background: 'transparent', border: `1px solid ${theme.border}`, color: theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{isDesktop ? '\uD83D\uDDA5\uFE0F' : '\uD83D\uDCF1'} {isDesktop ? 'Desktop' : 'Mobile'}</button>
-          <button onClick={() => { haptic(); setShowEndModal(true) }} style={{ padding: '6px 14px', borderRadius: 8, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', color: '#F87171', fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{'\u2716'} End Game</button>
-          <button onClick={() => { haptic(); setShowAbandonConfirm(true) }} style={{ padding: '6px 14px', borderRadius: 8, background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.35)', color: '#FBBF24', fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{'\u26A0'} Abandon</button>
+          {!isGuestView && <button onClick={() => { haptic(); handleShareGame() }} disabled={sharing} style={{ padding: '6px 14px', borderRadius: 8, background: mp.isMultiDevice ? 'rgba(74,222,128,0.15)' : 'transparent', border: `1px solid ${mp.isMultiDevice ? 'rgba(74,222,128,0.35)' : theme.border}`, color: mp.isMultiDevice ? '#4ADE80' : theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}><ShareIcon size={12} /> {sharing ? '...' : mp.isMultiDevice ? 'Shared' : 'Share'}</button>}
+          {!isGuestView && <button onClick={() => { haptic(); setShowEndModal(true) }} style={{ padding: '6px 14px', borderRadius: 8, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', color: '#F87171', fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{'\u2716'} End Game</button>}
+          {!isGuestView && <button onClick={() => { haptic(); setShowAbandonConfirm(true) }} style={{ padding: '6px 14px', borderRadius: 8, background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.35)', color: '#FBBF24', fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{'\u26A0'} Abandon</button>}
+          {isGuestView && <button onClick={() => { haptic(); mp.endSession(); onEndGame() }} style={{ padding: '6px 14px', borderRadius: 8, background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.35)', color: '#FBBF24', fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{'\u26A0'} Leave</button>}
         </div>
 
         {/* Settings panel (theme only — format is locked) */}
@@ -868,7 +1122,93 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
           </div>
         )}
 
-        {/* Player grid */}
+        {/* Player grid — Guest gets a compact layout */}
+        {isGuestView ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 'calc(100vh - 200px)' }}>
+            {/* Own player card — full size */}
+            {(() => {
+              const ownPlayer = players.find(p => p.id === guestClaimedPlayerId)
+              if (!ownPlayer) return null
+              return (
+                <div style={{ flex: '1 1 auto', minHeight: 200, display: 'flex', flexDirection: 'column' }}>
+                  <PlayerCard
+                    player={ownPlayer} players={players} theme={theme} isCommander={isCommander}
+                    onUpdate={(updates) => updatePlayer(ownPlayer.id, updates)}
+                    onRemove={() => {}}
+                    isMinimized={false}
+                    onToggleMinimize={() => {}}
+                    isDesktop={isDesktop}
+                    isConnected={true}
+                    isReadOnly={false}
+                  />
+                </div>
+              )
+            })()}
+
+            {/* Other players — compact list */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ fontSize: 10, color: theme.muted, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4, fontFamily: "'Cinzel', serif" }}>Other Players</div>
+              {players.filter(p => p.id !== guestClaimedPlayerId).map(player => {
+                const isExpanded = expandedOpponent === player.id
+                const isPlayerConnected = !!mp.connectedPlayers[player.id]
+                return (
+                  <div key={player.id} style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 10, overflow: 'hidden' }}>
+                    {/* Compact row — tap to expand */}
+                    <div
+                      onClick={() => setExpandedOpponent(isExpanded ? null : player.id)}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', cursor: 'pointer' }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {isPlayerConnected && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ADE80', display: 'inline-block' }} />}
+                        <span style={{ fontWeight: 700, fontSize: 14, color: theme.text, fontFamily: "'Cinzel', serif" }}>{player.name}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span style={{ fontSize: 22, fontWeight: 700, color: theme.accent, fontFamily: "'Cinzel', serif" }}>{player.life}</span>
+                        {player.poison > 0 && <span style={{ fontSize: 12, color: '#4ADE80' }}>☠ {player.poison}</span>}
+                        {isCommander && (() => {
+                          const ownPlayer = players.find(p => p.id === guestClaimedPlayerId)
+                          if (!ownPlayer) return null
+                          const trackers = getCmdrTrackers(ownPlayer.commanderDamage, player.id)
+                          const totalCmdr = trackers.reduce((s, t) => s + t.damage, 0)
+                          return totalCmdr > 0 ? <span style={{ fontSize: 12, color: '#FBBF24' }}>⚔ {totalCmdr}</span> : null
+                        })()}
+                        <span style={{ fontSize: 12, color: theme.muted, transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
+                      </div>
+                    </div>
+                    {/* Expanded detail — show counters */}
+                    {isExpanded && (
+                      <div style={{ padding: '8px 14px 12px', borderTop: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, color: theme.text }}>
+                          <span>❤️ Life: <strong>{player.life}</strong></span>
+                          <span>☠ Poison: <strong>{player.poison || 0}</strong></span>
+                          {player.energy > 0 && <span>⚡ Energy: <strong>{player.energy}</strong></span>}
+                          {player.experience > 0 && <span>⭐ Experience: <strong>{player.experience}</strong></span>}
+                        </div>
+                        {isCommander && (
+                          <div style={{ fontSize: 11, color: theme.muted }}>
+                            <div style={{ marginBottom: 4, fontWeight: 600 }}>Commander Damage Dealt to You:</div>
+                            {(() => {
+                              const ownPlayer = players.find(p => p.id === guestClaimedPlayerId)
+                              if (!ownPlayer) return null
+                              const trackers = getCmdrTrackers(ownPlayer.commanderDamage, player.id)
+                              return trackers.map((t, i) => (
+                                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 2 }}>
+                                  <span>{t.name || `Cmdr ${i + 1}`}:</span>
+                                  <strong style={{ color: t.damage >= 21 ? '#F87171' : theme.accent }}>{t.damage}</strong>
+                                  {t.damage >= 21 && <span style={{ color: '#F87171', fontSize: 10 }}>LETHAL</span>}
+                                </div>
+                              ))
+                            })()}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ) : (
         <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={players.map(p => p.id)} strategy={rectSwappingStrategy}>
             <div style={{
@@ -881,15 +1221,20 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
                 const rotation = player.rotation || 0
                 const needsWrapper = rotation === 90 || rotation === 270
                 const isLastOdd = index === players.length - 1 && players.length % 2 === 1
+                const isPlayerConnected = !!mp.connectedPlayers[player.id]
+                const isOwnPlayer = isGuestView && player.id === guestClaimedPlayerId
+                const isReadOnly = isGuestView && !isOwnPlayer
                 const cardElement = (
                   <PlayerCard
                     player={player} players={players} theme={theme} isCommander={isCommander}
-                    onUpdate={(updates) => updatePlayer(player.id, updates)}
-                    onRemove={() => removePlayer(player.id)}
+                    onUpdate={isReadOnly ? () => {} : (updates) => updatePlayer(player.id, updates)}
+                    onRemove={isGuestView ? () => {} : () => removePlayer(player.id)}
                     isMinimized={!!minimized[player.id]}
                     onToggleMinimize={() => setMinimized(prev => ({ ...prev, [player.id]: !prev[player.id] }))}
                     isDesktop={isDesktop}
-                    onEditPlayer={openEditPlayer}
+                    onEditPlayer={isGuestView ? undefined : openEditPlayer}
+                    isConnected={mp.isMultiDevice && isPlayerConnected}
+                    isReadOnly={isReadOnly}
                   />
                 )
                 return (
@@ -909,10 +1254,87 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
             </div>
           </SortableContext>
         </DndContext>
+        )}
       </div>
 
+      {/* Share Game Modal */}
+      <Modal isOpen={showShareModal} onClose={() => setShowShareModal(false)} title="Share Game">
+        <div style={{ textAlign: 'center', padding: '8px 0' }}>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: 14 }}>
+            Scan the QR code or share the link to let others join this game on their device.
+          </p>
+          {shareUrl && (
+            <>
+              <div style={{ display: 'inline-block', padding: 16, background: '#fff', borderRadius: 12, marginBottom: 16 }}>
+                <QRCodeSVG value={shareUrl} size={200} level="M" />
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <span style={{ fontFamily: "'Cinzel', serif", fontSize: 28, fontWeight: 800, letterSpacing: '0.2em', color: 'var(--text-primary)' }}>{mp.sessionCode}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                <input
+                  readOnly
+                  value={shareUrl}
+                  style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: 12, fontFamily: 'monospace', minWidth: 0 }}
+                  onClick={e => e.target.select()}
+                />
+                <button onClick={copyShareUrl} style={{ padding: '8px 16px', borderRadius: 8, background: copied ? '#4ADE80' : 'var(--accent)', border: 'none', color: copied ? '#000' : 'var(--bg-primary)', fontWeight: 700, cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap', fontFamily: "'Cinzel', serif" }}>
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+              {Object.keys(mp.connectedPlayers).length > 0 && (
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 4 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>Connected Players</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {Object.entries(mp.connectedPlayers).map(([playerId, info]) => {
+                      const player = players.find(p => String(p.id) === String(playerId))
+                      return (
+                        <div key={playerId} style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
+                          <ConnectedDot connected={true} />
+                          <span style={{ color: 'var(--text-primary)', fontSize: 14, fontFamily: "'Cinzel', serif" }}>{player?.name || info.displayName}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </Modal>
+
       {/* End Game Modal */}
-      <Modal isOpen={showEndModal} onClose={() => setShowEndModal(false)} title="End Game">
+      <Modal isOpen={showEndModal} onClose={() => { if (!gameSaved) setShowEndModal(false) }} title={gameSaved ? 'Game Saved! 🏆' : 'End Game'}>
+        {gameSaved ? (
+          <div className="endgame-modal" style={{ textAlign: 'center' }}>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: 24, fontSize: 14 }}>What's next?</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <button
+                type="button"
+                onClick={handleRunItBack}
+                style={{ padding: '14px 24px', borderRadius: 10, background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.35)', color: '#4ADE80', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: "'Cinzel', serif", letterSpacing: '0.05em' }}
+              >
+                🔄 Run It Back
+              </button>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Same players, same format — reset life & counters</span>
+              <button
+                type="button"
+                onClick={() => { if (mp.isMultiDevice) mp.endSession(); onEndGame('new-game') }}
+                style={{ padding: '12px 24px', borderRadius: 10, background: 'rgba(96,165,250,0.15)', border: '1px solid rgba(96,165,250,0.35)', color: '#60A5FA', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'Cinzel', serif", marginTop: 8 }}
+              >
+                🎲 New Game
+              </button>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Different players or format</span>
+              <button
+                type="button"
+                onClick={handleDoneAfterSave}
+                style={{ padding: '10px 24px', borderRadius: 10, background: 'transparent', border: `1px solid ${theme.border}`, color: theme.muted, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'Cinzel', serif", marginTop: 4 }}
+              >
+                Back to Menu
+              </button>
+            </div>
+          </div>
+        ) : (
         <div className="endgame-modal">
           <p className="endgame-modal__hint">Tap a player to mark as winner, then confirm.</p>
           <div className="endgame-modal__players">
@@ -946,6 +1368,7 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
             </button>
           </div>
         </div>
+        )}
       </Modal>
 
       {/* Edit Player Modal */}

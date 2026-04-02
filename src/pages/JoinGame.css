@@ -1,0 +1,159 @@
+.join-game {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+  padding: 1rem;
+}
+
+.join-game__loading,
+.join-game__error,
+.join-game__select {
+  text-align: center;
+  max-width: 420px;
+  width: 100%;
+}
+
+.join-game__loading p,
+.join-game__error p {
+  color: var(--text-secondary);
+  margin-top: 1rem;
+}
+
+.join-game__code {
+  display: inline-block;
+  margin-top: 0.5rem;
+  padding: 4px 12px;
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: 'Cinzel', serif;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  font-size: 1.1rem;
+}
+
+.join-game__error h2 {
+  color: #EF4444;
+  margin-bottom: 0.5rem;
+}
+
+.join-game__home-btn {
+  margin-top: 1.5rem;
+  padding: 10px 24px;
+  border-radius: 8px;
+  background: var(--accent);
+  border: none;
+  color: var(--bg-primary);
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Cinzel', serif;
+}
+
+.join-game__select h2 {
+  color: var(--text-primary);
+  font-family: 'Cinzel', serif;
+  font-size: 1.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.join-game__format {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+}
+
+.join-game__hint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-bottom: 1.5rem;
+}
+
+.join-game__players {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.join-game__player {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.join-game__player:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.join-game__player--selected {
+  border-color: var(--accent);
+  background: rgba(167, 139, 250, 0.1);
+  box-shadow: 0 0 20px rgba(167, 139, 250, 0.15);
+}
+
+.join-game__player--claimed {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.join-game__player-name {
+  color: var(--text-primary);
+  font-family: 'Cinzel', serif;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.join-game__player-life {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.join-game__player-tag {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.join-game__player-tag--you {
+  background: rgba(167, 139, 250, 0.2);
+  color: #A78BFA;
+}
+
+.join-game__claim-btn {
+  width: 100%;
+  padding: 14px 24px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #A78BFA, #7C3AED);
+  border: none;
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.05em;
+  transition: all 0.2s;
+  box-shadow: 0 4px 16px rgba(167, 139, 250, 0.3);
+}
+
+.join-game__claim-btn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.join-game__claim-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
