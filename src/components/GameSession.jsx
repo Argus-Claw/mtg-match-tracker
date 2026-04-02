@@ -174,14 +174,30 @@ function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, i
   const [deltaFading, setDeltaFading] = useState(false)
   const deltaTimeoutRef = useRef(null)
   const deltaFadeRef = useRef(null)
+  const localTapRef = useRef(false) // tracks whether life change came from local tap
   const manaColor = MANA_COLORS[player.color] || MANA_COLORS.W
   const commanderLethal = isCommander && player.commanderDamage && Object.keys(player.commanderDamage).some(oppId => getCmdrTrackers(player.commanderDamage, oppId).some(t => t.damage >= 21))
   const isDead = player.life <= 0 || player.poison >= 10 || commanderLethal
 
   useEffect(() => {
     if (player.life !== prevLife.current) {
-      setLifeFlash(player.life > prevLife.current ? 'gain' : 'loss')
+      const delta = player.life - prevLife.current
+      setLifeFlash(delta > 0 ? 'gain' : 'loss')
       const timeout = setTimeout(() => setLifeFlash(null), 2500)
+
+      // Show delta indicator for remote changes (local taps handle their own)
+      if (!localTapRef.current) {
+        clearTimeout(deltaTimeoutRef.current)
+        clearTimeout(deltaFadeRef.current)
+        setDeltaFading(false)
+        setPendingDelta(prev => prev + delta)
+        deltaTimeoutRef.current = setTimeout(() => {
+          setDeltaFading(true)
+          deltaFadeRef.current = setTimeout(() => { setPendingDelta(0); setDeltaFading(false) }, 500)
+        }, 2000)
+      }
+      localTapRef.current = false
+
       prevLife.current = player.life
       return () => clearTimeout(timeout)
     }
@@ -193,6 +209,7 @@ function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, i
 
   const handleLifeTap = (e) => {
     haptic()
+    localTapRef.current = true
     const rect = lifeTapRef.current.getBoundingClientRect()
     const centerX = rect.left + rect.width / 2
     const centerY = rect.top + rect.height / 2
@@ -1011,9 +1028,9 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
           <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: '0.12em', color: theme.accent, margin: 0, textTransform: 'uppercase', textShadow: `0 0 30px ${theme.glow}` }}>{'\u27E1'} {format} {'\u27E1'}</h1>
           {mp.isMultiDevice && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 4 }}>
-              <ConnectedDot connected={true} size={6} />
-              <span style={{ fontSize: 10, color: '#4ADE80', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                {isGuestView ? 'Connected' : `Shared${Object.keys(mp.connectedPlayers).length > 0 ? ` \u00B7 ${Object.keys(mp.connectedPlayers).length} joined` : ''}`}
+              <ConnectedDot connected={mp.isChannelHealthy} size={6} />
+              <span style={{ fontSize: 10, color: mp.isChannelHealthy ? '#4ADE80' : '#FBBF24', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                {!mp.isChannelHealthy ? 'Reconnecting...' : isGuestView ? 'Connected' : `Shared${Object.keys(mp.connectedPlayers).length > 0 ? ` \u00B7 ${Object.keys(mp.connectedPlayers).length} joined` : ''}`}
               </span>
             </div>
           )}
