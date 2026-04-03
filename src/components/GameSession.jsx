@@ -1168,10 +1168,12 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
             {(() => {
               const ownPlayer = players.find(p => p.id === guestClaimedPlayerId)
               if (!ownPlayer) return null
+              // Guest always sees own card upright — override host's rotation
+              const guestPlayer = { ...ownPlayer, rotation: 0 }
               return (
                 <div style={{ flex: '1 1 auto', minHeight: 200, display: 'flex', flexDirection: 'column' }}>
                   <PlayerCard
-                    player={ownPlayer} players={players} theme={theme} isCommander={isCommander}
+                    player={guestPlayer} players={players} theme={theme} isCommander={isCommander}
                     onUpdate={(updates) => updatePlayer(ownPlayer.id, updates)}
                     onRemove={() => {}}
                     isMinimized={false}
