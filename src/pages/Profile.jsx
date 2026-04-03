@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { useToast } from '../context/ToastContext'
+import { supabase } from '../lib/supabaseClient'
 import { useStats } from '../hooks/useStats'
 import { getWinRate } from '../lib/helpers'
 import Card from '../components/Card'
@@ -24,14 +25,37 @@ export default function Profile() {
   const [editing, setEditing] = useState(false)
 
   async function handleSave() {
-    if (!displayName.trim()) {
+    const name = displayName.trim()
+    if (!name) {
       addToast('Display name cannot be empty', 'error')
+      return
+    }
+    if (name.length < 2) {
+      addToast('Display name must be at least 2 characters', 'error')
+      return
+    }
+    if (name.length > 30) {
+      addToast('Display name must be 30 characters or less', 'error')
+      return
+    }
+    if (!/^[a-zA-Z0-9_ -]+$/.test(name)) {
+      addToast('Letters, numbers, spaces, hyphens, and underscores only', 'error')
       return
     }
     setSaving(true)
     try {
+      // Check uniqueness if name changed
+      if (name.toLowerCase() !== (profile?.display_name || '').toLowerCase()) {
+        const { data: available, error: checkErr } = await supabase.rpc('check_display_name_available', { name })
+        if (checkErr) throw checkErr
+        if (!available) {
+          addToast('This display name is already taken', 'error')
+          setSaving(false)
+          return
+        }
+      }
       await updateProfile({
-        display_name: displayName.trim(),
+        display_name: name,
         avatar_url: avatarUrl.trim() || null,
       })
       addToast('Profile updated!', 'success')

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
+import { supabase } from '../lib/supabaseClient'
 import Button from '../components/Button'
 import Input from '../components/Input'
 import Card from '../components/Card'
@@ -20,6 +21,9 @@ export default function Register() {
   function validate() {
     const errs = {}
     if (!displayName.trim()) errs.displayName = 'Display name is required'
+    else if (displayName.trim().length < 2) errs.displayName = 'Display name must be at least 2 characters'
+    else if (displayName.trim().length > 30) errs.displayName = 'Display name must be 30 characters or less'
+    else if (!/^[a-zA-Z0-9_ -]+$/.test(displayName.trim())) errs.displayName = 'Letters, numbers, spaces, hyphens, and underscores only'
     if (!email.trim()) errs.email = 'Email is required'
     if (!password) errs.password = 'Password is required'
     else if (password.length < 6) errs.password = 'Password must be at least 6 characters'
@@ -37,7 +41,15 @@ export default function Register() {
     setErrors({})
     setLoading(true)
     try {
-      await signUpWithEmail(email, password, displayName)
+      // Check display name availability
+      const { data: available, error: checkErr } = await supabase.rpc('check_display_name_available', { name: displayName.trim() })
+      if (checkErr) throw checkErr
+      if (!available) {
+        setErrors({ displayName: 'This display name is already taken' })
+        setLoading(false)
+        return
+      }
+      await signUpWithEmail(email, password, displayName.trim())
       addToast('Account created! Check your email to confirm.', 'success')
     } catch (err) {
       addToast(err.message || 'Failed to create account', 'error')
