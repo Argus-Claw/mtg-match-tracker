@@ -1230,14 +1230,18 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
           <SortableContext items={players.map(p => p.id)} strategy={rectSwappingStrategy}>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: isDesktop ? (players.length === 2 ? '1fr 1fr' : 'repeat(2, 1fr)') : (players.length === 2 ? '1fr' : 'repeat(2, 1fr)'),
-              gridAutoRows: '1fr', gap: 12,
+              gridTemplateColumns: isDesktop
+                ? (players.length === 2 ? '1fr 1fr' : players.length >= 6 ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)')
+                : (players.length === 2 ? '1fr' : players.length >= 6 ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)'),
+              gridAutoRows: '1fr', gap: players.length >= 6 ? 8 : 12,
               minHeight: isDesktop ? 'calc(100vh - 120px)' : 'calc(100vh - 200px)',
             }}>
               {players.map((player, index) => {
                 const rotation = player.rotation || 0
                 const needsWrapper = rotation === 90 || rotation === 270
-                const isLastOdd = index === players.length - 1 && players.length % 2 === 1
+                const cols = players.length >= 6 ? 3 : 2
+                const remainder = players.length % cols
+                const isLastInShortRow = remainder !== 0 && index >= players.length - remainder
                 const isPlayerConnected = !!mp.connectedPlayers[player.id]
                 const isOwnPlayer = isGuestView && player.id === guestClaimedPlayerId
                 const isReadOnly = isGuestView && !isOwnPlayer
@@ -1255,7 +1259,7 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
                   />
                 )
                 return (
-                  <SortablePlayerPanel key={player.id} id={player.id} theme={theme} gridColumn={isLastOdd ? 'span 2' : undefined} onRotate={() => rotatePlayer(player.id)}>
+                  <SortablePlayerPanel key={player.id} id={player.id} theme={theme} gridColumn={isLastInShortRow && remainder === 1 ? `span ${cols}` : undefined} onRotate={() => rotatePlayer(player.id)}>
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                       {needsWrapper ? (
                         <RotatedCardWrapper rotation={rotation}>{cardElement}</RotatedCardWrapper>
