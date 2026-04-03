@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MTG Match Tracker — Player Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0D0D0F;
+    --card: #18181B;
+    --accent: #A78BFA;
+    --text: #E4E4E7;
+    --muted: #71717A;
+    --border: #27272A;
+    --glow: rgba(167,139,250,0.15);
+    --green: #4ADE80;
+    --red: #F87171;
+    --yellow: #FBBF24;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    line-height: 1.7;
+    padding: 20px;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-family: 'Cinzel', serif;
+    font-size: 28px;
+    font-weight: 900;
+    color: var(--accent);
+    text-align: center;
+    letter-spacing: 0.1em;
+    margin: 30px 0 8px;
+    text-shadow: 0 0 30px var(--glow);
+  }
+  .subtitle {
+    text-align: center;
+    color: var(--muted);
+    font-size: 14px;
+    margin-bottom: 40px;
+  }
+  h2 {
+    font-family: 'Cinzel', serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent);
+    margin: 36px 0 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: 0.05em;
+  }
+  h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 20px 0 8px;
+  }
+  p { margin: 8px 0; color: #d4d4d8; font-size: 14px; }
+  ul { padding-left: 20px; margin: 8px 0; }
+  li { margin: 4px 0; font-size: 14px; color: #d4d4d8; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin: 12px 0;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 6px;
+  }
+  .badge-green { background: rgba(74,222,128,0.15); color: var(--green); border: 1px solid rgba(74,222,128,0.3); }
+  .badge-red { background: rgba(248,113,113,0.15); color: var(--red); border: 1px solid rgba(248,113,113,0.3); }
+  .badge-purple { background: rgba(167,139,250,0.15); color: var(--accent); border: 1px solid rgba(167,139,250,0.3); }
+  .badge-yellow { background: rgba(251,191,36,0.15); color: var(--yellow); border: 1px solid rgba(251,191,36,0.3); }
+  .key {
+    display: inline-block;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 6px;
+    padding: 1px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: 'Cinzel', serif;
+    color: var(--text);
+  }
+  .tip {
+    background: rgba(167,139,250,0.08);
+    border-left: 3px solid var(--accent);
+    padding: 10px 14px;
+    border-radius: 0 8px 8px 0;
+    margin: 12px 0;
+    font-size: 13px;
+  }
+  .tip::before { content: '💡 '; }
+  .warn {
+    background: rgba(251,191,36,0.08);
+    border-left: 3px solid var(--yellow);
+    padding: 10px 14px;
+    border-radius: 0 8px 8px 0;
+    margin: 12px 0;
+    font-size: 13px;
+  }
+  .warn::before { content: '⚠️ '; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 13px;
+  }
+  th {
+    text-align: left;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.05);
+    color: var(--accent);
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    color: #d4d4d8;
+  }
+  .toc { list-style: none; padding: 0; }
+  .toc li { margin: 6px 0; }
+  .toc a { color: var(--accent); text-decoration: none; font-size: 14px; }
+  .toc a:hover { text-decoration: underline; }
+  a { color: var(--accent); }
+  .emoji { font-size: 18px; margin-right: 4px; }
+  @media (max-width: 480px) {
+    body { padding: 12px; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 17px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>◇ MTG Match Tracker ◇</h1>
+<p class="subtitle">Life tracking, multiplayer sync, game history & stats — all in your browser.</p>
+
+<div class="card">
+  <h3>Quick Start</h3>
+  <ol>
+    <li>Open the app → <strong>Log in</strong> or <strong>Register</strong> (email + password)</li>
+    <li>Tap <strong>New Game</strong></li>
+    <li>Pick your format → Add players → Start Game</li>
+    <li>Tap the life total area to adjust life — right/top = +1, left/bottom = −1</li>
+    <li>When done → <strong>End Game</strong> → pick winner → Save</li>
+  </ol>
+</div>
+
+<h2 id="formats">Supported Formats</h2>
+<table>
+  <tr><th>Format</th><th>Starting Life</th><th>Commander Damage?</th></tr>
+  <tr><td>👑 Commander</td><td>40</td><td>✅ Yes (lethal at 21)</td></tr>
+  <tr><td>🛡️ Brawl</td><td>25</td><td>✅ Yes</td></tr>
+  <tr><td>⚔️ Standard</td><td>20</td><td>—</td></tr>
+  <tr><td>🔧 Modern</td><td>20</td><td>—</td></tr>
+  <tr><td>📦 Draft</td><td>20</td><td>—</td></tr>
+  <tr><td>🗺️ Pioneer</td><td>20</td><td>—</td></tr>
+  <tr><td>📜 Legacy</td><td>20</td><td>—</td></tr>
+  <tr><td>💎 Vintage</td><td>20</td><td>—</td></tr>
+  <tr><td>🪙 Pauper</td><td>20</td><td>—</td></tr>
+</table>
+
+<h2 id="newgame">Starting a New Game</h2>
+<ol>
+  <li><strong>Pick a format</strong> — this sets starting life and enables/disables commander damage tracking</li>
+  <li><strong>Add players</strong> — tap "Add Player" for each person. You can:
+    <ul>
+      <li>Add yourself (logged-in user)</li>
+      <li>Add friends (if you've connected via the Friends page)</li>
+      <li>Add guests by name</li>
+    </ul>
+  </li>
+  <li><strong>Drag to reorder</strong> players in the setup screen using the ☰ handle</li>
+  <li>For Commander/Brawl: optionally enter <strong>Commander name</strong> and <strong>Commander colors</strong></li>
+  <li>Tap <strong>Start Game</strong></li>
+</ol>
+<div class="tip">If your app closes mid-game, don't worry — the game auto-saves to your browser. When you come back and tap New Game, you'll see a <strong>"Resume Game"</strong> option.</div>
+
+<h2 id="life">Life Tracking</h2>
+<h3>Tap Zones</h3>
+<p>Each player card has invisible tap zones for adjusting life:</p>
+<div class="card">
+  <p style="text-align:center; font-family: monospace; line-height: 2;">
+    <span class="badge badge-green">+ top</span><br>
+    <span class="badge badge-red">− left</span>&nbsp;&nbsp;&nbsp;&nbsp;
+    <span class="badge badge-green">+ right</span><br>
+    <span class="badge badge-red">− bottom</span>
+  </p>
+</div>
+<ul>
+  <li>Tap the <strong>right side</strong> or <strong>top</strong> of the life area → <span style="color: var(--green);">+1 life</span></li>
+  <li>Tap the <strong>left side</strong> or <strong>bottom</strong> → <span style="color: var(--red);">−1 life</span></li>
+  <li>Faint +/− signs on the card show you which zone is which</li>
+  <li>A colored flash (green = gain, red = loss) confirms the change</li>
+  <li>Rapid taps accumulate — a floating <span style="color: var(--green);">+3</span> or <span style="color: var(--red);">−5</span> shows total change</li>
+</ul>
+<div class="tip">Tap zones are <strong>rotation-aware</strong> — if you rotate a card, the zones rotate with it so +/− always makes sense from your viewing angle.</div>
+
+<h2 id="playercard">Player Cards</h2>
+<h3>Card Features</h3>
+<ul>
+  <li><strong>Mana color dots</strong> — tap a color circle (W/U/B/R/G) to change the card's color theme</li>
+  <li><strong>Player name</strong> — tap to edit name, deck name, and commander (dashed underline = editable)</li>
+  <li><strong>Minimize (−)</strong> — collapses a card to a compact bar showing just name + life</li>
+  <li><strong>Remove (✕)</strong> — removes a player (only if 3+ players)</li>
+  <li><strong>Death overlay</strong> — skull appears when life ≤ 0, poison ≥ 10, or commander damage ≥ 21</li>
+</ul>
+
+<h3>Counters</h3>
+<p>Tap the <span class="key">Counters</span> button at the bottom of a player card to expand:</p>
+<ul>
+  <li><span class="emoji">💀</span> <strong>Poison</strong> — 10 = lethal</li>
+  <li><span class="emoji">⚡</span> <strong>Energy</strong></li>
+  <li><span class="emoji">⭐</span> <strong>Experience</strong></li>
+</ul>
+
+<h3>Commander Damage (Commander/Brawl only)</h3>
+<p>Tap <span class="key">Cmd Dmg</span> to expand commander damage tracking:</p>
+<ul>
+  <li>Shows damage <em>taken from</em> each opponent</li>
+  <li>Tap <strong>+</strong> to add damage (also subtracts 1 life automatically)</li>
+  <li>Tap <strong>+ Cmdr</strong> to add a partner commander tracker for an opponent</li>
+  <li>Tap a commander label to rename it</li>
+  <li>21 damage from a single commander = 💀 lethal</li>
+</ul>
+
+<h2 id="layout">Layout & Display</h2>
+<h3>Toolbar Buttons</h3>
+<table>
+  <tr><th>Button</th><th>What It Does</th></tr>
+  <tr><td><span class="key">⚙ Theme</span></td><td>Choose a visual theme: Obsidian, Blood Moon, Azorius, Golgari, or Orzhov</td></tr>
+  <tr><td><span class="key">🎲 Tools</span></td><td>Opens dice roller, coin flipper, storm/turn counters, and "Who Goes First?" randomizer</td></tr>
+  <tr><td><span class="key">Log</span></td><td>View a chronological game log of all life changes, counter updates, and dice rolls</td></tr>
+  <tr><td><span class="key">Nav</span></td><td>Show/hide the navigation bar (hidden by default during games)</td></tr>
+  <tr><td><span class="key">Full</span></td><td>Toggle fullscreen mode</td></tr>
+  <tr><td><span class="key">📱 / 🖥️</span></td><td>Switch between Mobile and Desktop layout sizing</td></tr>
+  <tr><td><span class="key">Auto / 1col / 2col / 3col</span></td><td>Set how many player columns to display. Auto picks based on player count.</td></tr>
+  <tr><td><span class="key">📌 Dock</span></td><td>Lock the page to fit exactly on screen — no scrolling. Great for tablet/TV display.</td></tr>
+  <tr><td><span class="key">Share</span></td><td>Create a multiplayer session (see below)</td></tr>
+  <tr><td><span class="key">End Game</span></td><td>Save the game to your history</td></tr>
+  <tr><td><span class="key">Abandon</span></td><td>Discard the game without saving</td></tr>
+</table>
+
+<h3>Drag & Rotate</h3>
+<p>Below each player card are two buttons:</p>
+<ul>
+  <li><strong>↻ Rotate</strong> — cycles the card through 0° → 90° → 180° → 270°. Useful for players sitting across from you — flip their card upside-down so they can read it.</li>
+  <li><strong>☰ Drag</strong> — press and drag to rearrange player positions on the grid. Swap any two players.</li>
+</ul>
+
+<h3>Turn & Storm Counters</h3>
+<p>In the header between the format title and toolbar:</p>
+<ul>
+  <li><strong>TURN</strong> — tap +/− to track turns. Advancing the turn resets storm count to 0.</li>
+  <li><strong>STORM</strong> — tap +/− to count spells cast this turn.</li>
+</ul>
+
+<h2 id="tools">Tools Panel</h2>
+<p>Tap <span class="key">🎲 Tools</span> in the toolbar to open:</p>
+<ul>
+  <li><strong>Dice Roller</strong> — select die type (d4, d6, d8, d10, d12, d20) and tap Roll. Animated result.</li>
+  <li><strong>Coin Flip</strong> — Heads or Tails with animation.</li>
+  <li><strong>Who Goes First?</strong> — randomly picks a player from the game.</li>
+  <li><strong>Storm & Turn counters</strong> — duplicate controls (also in the header).</li>
+</ul>
+
+<h2 id="multiplayer">Multiplayer (Multi-Device Sync)</h2>
+<p>Let each player control their own life total from their own phone.</p>
+
+<h3>Host (you)</h3>
+<ol>
+  <li>Start a game normally</li>
+  <li>Tap <span class="key">Share</span> in the toolbar</li>
+  <li>A <strong>QR code</strong> and <strong>6-character code</strong> appear</li>
+  <li>Other players scan the QR or open the link</li>
+  <li>Your screen is the main display — shows all players, synced in real time</li>
+</ol>
+
+<h3>Guests (other players)</h3>
+<ol>
+  <li>Scan the QR code or open the shared link</li>
+  <li>Tap <strong>your name</strong> to claim your player slot</li>
+  <li>Tap <strong>Join Game</strong></li>
+  <li>You'll see your card full-size with other players in a compact list below</li>
+  <li>Tap your card to adjust your life — changes sync to the host screen instantly</li>
+</ol>
+
+<div class="card">
+  <h3>Connection Status</h3>
+  <ul>
+    <li><span class="badge badge-green">● Shared</span> = connected and syncing</li>
+    <li><span class="badge badge-yellow">● Reconnecting...</span> = connection dropped, auto-recovering</li>
+  </ul>
+  <p>The host sends a sync heartbeat every 5 seconds. If a guest's phone goes to sleep or loses connection, it will automatically reconnect and catch up when the screen wakes.</p>
+</div>
+
+<div class="tip">If someone accidentally closes their browser, they can re-open the same link and re-tap their name to rejoin. Their life total is preserved on the host.</div>
+
+<div class="warn">Multiplayer requires an account (the host must be logged in). Guests can join anonymously.</div>
+
+<h2 id="endgame">Ending & Saving a Game</h2>
+<h3>End Game (Save)</h3>
+<ol>
+  <li>Tap <span class="key">End Game</span></li>
+  <li>Tap the winning player(s) — crown icon appears</li>
+  <li>Optionally add notes ("Turn 7 combo win", etc.)</li>
+  <li>Tap <strong>Save & End Game</strong></li>
+</ol>
+<p>After saving, you get three options:</p>
+<ul>
+  <li><strong>🔄 Run It Back</strong> — same players, same format, reset life & counters. Instant rematch.</li>
+  <li><strong>🎲 New Game</strong> — back to format/player selection</li>
+  <li><strong>Back to Menu</strong> — return to dashboard</li>
+</ul>
+
+<h3>Abandon Game</h3>
+<p>Tap <span class="key">Abandon</span> to discard the game without saving. Asks for confirmation.</p>
+
+<h2 id="history">Game History & Stats</h2>
+<p>From the main menu:</p>
+<ul>
+  <li><strong>Games</strong> — browse all saved games with format, date, players, winner, and life totals</li>
+  <li><strong>Stats</strong> — win rates, format breakdown, and performance charts</li>
+  <li><strong>Friends</strong> — add friends by searching for their username. Friends appear as player options in New Game.</li>
+</ul>
+
+<h2 id="tips">Pro Tips</h2>
+<div class="card">
+  <ul>
+    <li>🔒 <strong>Screen stays on</strong> during games (wake lock) — no need to worry about auto-sleep</li>
+    <li>📱 <strong>Add to Home Screen</strong> for an app-like experience (it's a PWA — works offline too)</li>
+    <li>📌 <strong>Dock + 3col + Fullscreen</strong> = perfect tablet display for a 6-player Commander pod</li>
+    <li>🔄 <strong>Rotate cards 180°</strong> for players across the table so they can read their own life total</li>
+    <li>☰ <strong>Drag to rearrange</strong> so card positions match actual seating</li>
+    <li>➖ <strong>Minimize</strong> players who are knocked out to save screen space</li>
+    <li>🎲 <strong>"Who Goes First?"</strong> saves time — no need to roll physical dice before game 1</li>
+  </ul>
+</div>
+
+<h2 id="faq">FAQ</h2>
+
+<h3>Do I need an account?</h3>
+<p>To <strong>host a game</strong> and save history, yes (free, just email + password). To <strong>join</strong> someone else's game as a guest, no — anonymous access works.</p>
+
+<h3>Does it work offline?</h3>
+<p>Yes — it's a PWA. The life tracker works without internet. Multiplayer sync and game saving require a connection.</p>
+
+<h3>Can I use it on a tablet as a table centerpiece?</h3>
+<p>Absolutely. Use <strong>Dock + 3col + Fullscreen</strong> for the best experience. Rotate cards so each player can read their own.</p>
+
+<h3>What happens if my phone disconnects during multiplayer?</h3>
+<p>The host keeps all state. Your phone will auto-reconnect when the screen wakes. Any changes you made while disconnected will sync back to the host.</p>
+
+<h3>Can two people control the same player?</h3>
+<p>Yes — multiple devices can claim the same slot. Useful if someone wants to hand off to another device.</p>
+
+<p style="text-align: center; color: var(--muted); margin-top: 48px; font-size: 12px; letter-spacing: 0.1em;">
+  Built by Joe Giordano • MTG Match Tracker v1.0
+</p>
+
+</body>
+</html>
