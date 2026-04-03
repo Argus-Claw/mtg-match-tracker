@@ -465,6 +465,8 @@ function SortablePlayerPanel({ id, children, theme, gridColumn, onRotate }) {
     display: 'flex',
     flexDirection: 'column',
     gridColumn,
+    overflow: 'hidden',
+    minHeight: 0,
   }
 
   return (
@@ -633,6 +635,7 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
     const saved = localStorage.getItem('mtg-grid-cols')
     return saved ? parseInt(saved, 10) : 0 // 0 = auto
   })
+  const [docked, setDocked] = useState(() => localStorage.getItem('mtg-docked') === 'true')
 
   // End game state
   const [showEndModal, setShowEndModal] = useState(false)
@@ -1019,16 +1022,18 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
 
   return (
     <div className="game-session" data-layout={layoutMode} style={{
-      minHeight: '100vh', background: theme.bg, fontFamily: "'Cinzel', serif", color: theme.text,
+      ...(docked ? { height: '100vh', maxHeight: '100vh', overflow: 'hidden' } : { minHeight: '100vh' }),
+      background: theme.bg, fontFamily: "'Cinzel', serif", color: theme.text,
       maxWidth: isDesktop ? '100%' : (players.length >= 3 ? '100%' : 600), margin: '0 auto', position: 'relative',
       paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)',
       paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)',
+      display: docked ? 'flex' : 'block', flexDirection: 'column',
     }}>
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 300, background: `radial-gradient(ellipse at 50% 0%, ${theme.glow}, transparent 70%)`, pointerEvents: 'none', zIndex: 0 }} />
-      <div style={{ position: 'relative', zIndex: 1, padding: isDesktop ? '8px 12px 40px' : (players.length >= 3 ? '8px 8px 60px' : '16px 16px 100px') }}>
+      <div style={{ position: 'relative', zIndex: 1, padding: docked ? (isDesktop ? '4px 8px 4px' : '4px 4px 4px') : (isDesktop ? '8px 12px 40px' : (players.length >= 3 ? '8px 8px 60px' : '16px 16px 100px')), ...(docked ? { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 } : {}) }}>
 
         {/* Header */}
-        <div style={{ textAlign: 'center', paddingTop: isDesktop ? 8 : (players.length >= 3 ? 4 : 12), paddingBottom: isDesktop ? 8 : (players.length >= 3 ? 8 : 16) }}>
+        <div style={{ textAlign: 'center', paddingTop: docked ? 2 : (isDesktop ? 8 : (players.length >= 3 ? 4 : 12)), paddingBottom: docked ? 2 : (isDesktop ? 8 : (players.length >= 3 ? 8 : 16)), flexShrink: 0 }}>
           <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: '0.12em', color: theme.accent, margin: 0, textTransform: 'uppercase', textShadow: `0 0 30px ${theme.glow}` }}>{'\u27E1'} {format} {'\u27E1'}</h1>
           {mp.isMultiDevice && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 4 }}>
@@ -1054,7 +1059,7 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
         </div>
 
         {/* Toolbar */}
-        <div style={{ display: 'flex', gap: isDesktop ? 8 : 6, marginBottom: isDesktop ? 8 : (players.length >= 3 ? 8 : 16), flexWrap: 'wrap', justifyContent: 'center' }}>
+        <div style={{ display: 'flex', gap: docked ? 4 : (isDesktop ? 8 : 6), marginBottom: docked ? 4 : (isDesktop ? 8 : (players.length >= 3 ? 8 : 16)), flexWrap: 'wrap', justifyContent: 'center', flexShrink: 0 }}>
           <button onClick={() => { haptic(); setShowSettings(!showSettings) }} style={{ padding: '6px 14px', borderRadius: 8, background: showSettings ? theme.accent : 'transparent', border: `1px solid ${theme.border}`, color: showSettings ? theme.bg : theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{'\u2699'} Theme</button>
           <button onClick={() => { haptic(); setShowTools(!showTools) }} style={{ padding: '6px 14px', borderRadius: 8, background: showTools ? theme.accent : 'transparent', border: `1px solid ${theme.border}`, color: showTools ? theme.bg : theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{'\uD83C\uDFB2'} Tools</button>
           <button onClick={() => { haptic(); setShowHistory(!showHistory) }} style={{ padding: '6px 14px', borderRadius: 8, background: showHistory ? theme.accent : 'transparent', border: `1px solid ${theme.border}`, color: showHistory ? theme.bg : theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}><HistoryIcon size={12} /> Log</button>
@@ -1073,6 +1078,7 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
               }}>{c === 0 ? 'Auto' : `${c}col`}</button>
             ))}
           </div>
+          <button onClick={() => { haptic(); const next = !docked; setDocked(next); localStorage.setItem('mtg-docked', next) }} style={{ padding: '6px 14px', borderRadius: 8, background: docked ? theme.accent : 'transparent', border: `1px solid ${docked ? theme.accent : theme.border}`, color: docked ? theme.bg : theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{docked ? '\u{1F4CC}' : '\u{1F4CC}'} Dock</button>
           {!isGuestView && <button onClick={() => { haptic(); handleShareGame() }} disabled={sharing} style={{ padding: '6px 14px', borderRadius: 8, background: mp.isMultiDevice ? 'rgba(74,222,128,0.15)' : 'transparent', border: `1px solid ${mp.isMultiDevice ? 'rgba(74,222,128,0.35)' : theme.border}`, color: mp.isMultiDevice ? '#4ADE80' : theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}><ShareIcon size={12} /> {sharing ? '...' : mp.isMultiDevice ? 'Shared' : 'Share'}</button>}
           {!isGuestView && <button onClick={() => { haptic(); setShowEndModal(true) }} style={{ padding: '6px 14px', borderRadius: 8, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', color: '#F87171', fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{'\u2716'} End Game</button>}
           {!isGuestView && <button onClick={() => { haptic(); setShowAbandonConfirm(true) }} style={{ padding: '6px 14px', borderRadius: 8, background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.35)', color: '#FBBF24', fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{'\u26A0'} Abandon</button>}
@@ -1242,6 +1248,7 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
             </div>
           </div>
         ) : (
+        <div style={docked ? { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 } : {}}>
         <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={players.map(p => p.id)} strategy={rectSwappingStrategy}>
             <div style={{
@@ -1253,7 +1260,7 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
                 return players.length === 2 ? '1fr' : players.length >= 6 ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)'
               })(),
               gridAutoRows: '1fr', gap: (gridCols >= 3 || (gridCols === 0 && players.length >= 6)) ? 8 : 12,
-              minHeight: isDesktop ? 'calc(100vh - 120px)' : 'calc(100vh - 200px)',
+              ...(docked ? { flex: 1, minHeight: 0, overflow: 'hidden' } : { minHeight: isDesktop ? 'calc(100vh - 120px)' : 'calc(100vh - 200px)' }),
             }}>
               {players.map((player, index) => {
                 const rotation = player.rotation || 0
@@ -1294,6 +1301,7 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
             </div>
           </SortableContext>
         </DndContext>
+        </div>
         )}
       </div>
 
