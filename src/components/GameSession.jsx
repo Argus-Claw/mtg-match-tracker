@@ -629,6 +629,10 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
   const [firstPlayer, setFirstPlayer] = useState(null)
   const [pickingFirst, setPickingFirst] = useState(false)
   const [layoutMode, setLayoutMode] = useState(() => resumeState?.layoutMode || localStorage.getItem('mtg-layout-mode') || 'mobile')
+  const [gridCols, setGridCols] = useState(() => {
+    const saved = localStorage.getItem('mtg-grid-cols')
+    return saved ? parseInt(saved, 10) : 0 // 0 = auto
+  })
 
   // End game state
   const [showEndModal, setShowEndModal] = useState(false)
@@ -1057,6 +1061,18 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
           <button onClick={() => { haptic(); setHideNav(!hideNav) }} style={{ padding: '6px 14px', borderRadius: 8, background: hideNav ? theme.accent : 'transparent', border: `1px solid ${theme.border}`, color: hideNav ? theme.bg : theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{hideNav ? <EyeOffIcon size={12} /> : <EyeIcon size={12} />} Nav</button>
           <button onClick={toggleFullscreen} style={{ padding: '6px 14px', borderRadius: 8, background: isFullscreen ? theme.accent : 'transparent', border: `1px solid ${theme.border}`, color: isFullscreen ? theme.bg : theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}><FullscreenIcon size={12} /> {isFullscreen ? 'Exit' : 'Full'}</button>
           <button onClick={toggleLayoutMode} style={{ padding: '6px 14px', borderRadius: 8, background: 'transparent', border: `1px solid ${theme.border}`, color: theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{isDesktop ? '\uD83D\uDDA5\uFE0F' : '\uD83D\uDCF1'} {isDesktop ? 'Desktop' : 'Mobile'}</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            {[0, 1, 2, 3].map(c => (
+              <button key={c} onClick={() => { haptic(); setGridCols(c); localStorage.setItem('mtg-grid-cols', c) }} style={{
+                padding: '6px 10px', borderRadius: 8,
+                background: gridCols === c ? theme.accent : 'transparent',
+                border: `1px solid ${gridCols === c ? theme.accent : theme.border}`,
+                color: gridCols === c ? theme.bg : theme.text,
+                fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif",
+                minWidth: 32,
+              }}>{c === 0 ? 'Auto' : `${c}col`}</button>
+            ))}
+          </div>
           {!isGuestView && <button onClick={() => { haptic(); handleShareGame() }} disabled={sharing} style={{ padding: '6px 14px', borderRadius: 8, background: mp.isMultiDevice ? 'rgba(74,222,128,0.15)' : 'transparent', border: `1px solid ${mp.isMultiDevice ? 'rgba(74,222,128,0.35)' : theme.border}`, color: mp.isMultiDevice ? '#4ADE80' : theme.text, fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}><ShareIcon size={12} /> {sharing ? '...' : mp.isMultiDevice ? 'Shared' : 'Share'}</button>}
           {!isGuestView && <button onClick={() => { haptic(); setShowEndModal(true) }} style={{ padding: '6px 14px', borderRadius: 8, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', color: '#F87171', fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{'\u2716'} End Game</button>}
           {!isGuestView && <button onClick={() => { haptic(); setShowAbandonConfirm(true) }} style={{ padding: '6px 14px', borderRadius: 8, background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.35)', color: '#FBBF24', fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.08em', fontFamily: "'Cinzel', serif" }}>{'\u26A0'} Abandon</button>}
@@ -1230,17 +1246,20 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
           <SortableContext items={players.map(p => p.id)} strategy={rectSwappingStrategy}>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: isDesktop
-                ? (players.length === 2 ? '1fr 1fr' : players.length >= 6 ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)')
-                : (players.length === 2 ? '1fr' : players.length >= 6 ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)'),
-              gridAutoRows: '1fr', gap: players.length >= 6 ? 8 : 12,
+              gridTemplateColumns: (() => {
+                if (gridCols > 0) return `repeat(${gridCols}, 1fr)`
+                // Auto layout
+                if (isDesktop) return players.length === 2 ? '1fr 1fr' : players.length >= 6 ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)'
+                return players.length === 2 ? '1fr' : players.length >= 6 ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)'
+              })(),
+              gridAutoRows: '1fr', gap: (gridCols >= 3 || (gridCols === 0 && players.length >= 6)) ? 8 : 12,
               minHeight: isDesktop ? 'calc(100vh - 120px)' : 'calc(100vh - 200px)',
             }}>
               {players.map((player, index) => {
                 const rotation = player.rotation || 0
                 const needsWrapper = rotation === 90 || rotation === 270
-                const cols = players.length >= 6 ? 3 : 2
-                const remainder = players.length % cols
+                const cols = gridCols > 0 ? gridCols : (players.length >= 6 ? 3 : 2)
+                const remainder = cols === 1 ? 0 : players.length % cols
                 const isLastInShortRow = remainder !== 0 && index >= players.length - remainder
                 const isPlayerConnected = !!mp.connectedPlayers[player.id]
                 const isOwnPlayer = isGuestView && player.id === guestClaimedPlayerId
