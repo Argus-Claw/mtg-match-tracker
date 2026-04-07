@@ -294,10 +294,18 @@ function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, i
         {/* Tap zone indicators — rotation-aware */}
         {(() => {
           const r = player.rotation || 0
-          const leftSign = (r === 0 || r === 90) ? '−' : '+'
-          const rightSign = (r === 0 || r === 90) ? '+' : '−'
-          const topSign = (r === 0 || r === 270) ? '+' : '−'
-          const bottomSign = (r === 0 || r === 270) ? '−' : '+'
+          // Tap logic works in screen coordinates, but indicators render INSIDE
+          // the CSS-rotated container. For 180° the container flips everything,
+          // so we show the OPPOSITE labels so the reader sees the correct sign.
+          const flip180 = r === 180
+          let leftSign = (r === 0 || r === 90) ? '−' : '+'
+          let rightSign = (r === 0 || r === 90) ? '+' : '−'
+          let topSign = (r === 0 || r === 270) ? '+' : '−'
+          let bottomSign = (r === 0 || r === 270) ? '−' : '+'
+          if (flip180) {
+            ;[leftSign, rightSign] = [rightSign, leftSign]
+            ;[topSign, bottomSign] = [bottomSign, topSign]
+          }
           const plusColor = 'rgba(74,222,128,0.45)'
           const minusColor = 'rgba(248,113,113,0.45)'
           return <>
@@ -990,6 +998,12 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
   }
 
   const handleRunItBack = () => {
+    // Increment game generation BEFORE resetting state — this tells all guest
+    // clients to discard their cached local state and accept the reset values
+    // unconditionally, preventing stale guest state from overwriting the reset.
+    if (mp.isMultiDevice && mp.isHost) {
+      mp.resetGameGeneration()
+    }
     // Reset all players to starting life, clear counters, keep names/decks
     setPlayers(prev => prev.map(p => ({
       ...p,

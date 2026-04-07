@@ -50,6 +50,8 @@ export function useGameSession() {
   const broadcastFullStateRef = useRef(null) // latest broadcastFullState for heartbeat
   const guestLocalStateRef = useRef(null) // guest's local player state for resync after reconnect
   const claimedPlayerIdRef = useRef(null)
+  const gameGenerationRef = useRef(0) // incremented on game reset — tells guests to accept host state unconditionally
+  const lastSeenGenRef = useRef(0) // guest tracks the last generation it saw
 
   // Register callbacks
   const setOnRemoteUpdate = useCallback((fn) => { onRemoteUpdateRef.current = fn }, [])
@@ -79,6 +81,12 @@ export function useGameSession() {
     channel.on('broadcast', { event: 'full_state' }, ({ payload }) => {
       lastReceivedRef.current = Date.now()
       if (!asHost && onFullStateRef.current) {
+        // If the host incremented the game generation (e.g. "Run it back"),
+        // clear guest local state so we accept the reset unconditionally
+        if (payload._gen !== undefined && payload._gen > lastSeenGenRef.current) {
+          lastSeenGenRef.current = payload._gen
+          guestLocalStateRef.current = null
+        }
         // Before applying host state, re-send our local state if we have pending changes
         // This handles the case where guest tapped while disconnected
         if (guestLocalStateRef.current && claimedPlayerIdRef.current) {
@@ -122,6 +130,11 @@ export function useGameSession() {
       lastReceivedRef.current = Date.now()
       // Heartbeat carries full state for guests — treat same as full_state
       if (!asHost && onFullStateRef.current && payload.players) {
+        // Check for game generation change (reset)
+        if (payload._gen !== undefined && payload._gen > lastSeenGenRef.current) {
+          lastSeenGenRef.current = payload._gen
+          guestLocalStateRef.current = null
+        }
         // Same resync logic as full_state
         if (guestLocalStateRef.current && claimedPlayerIdRef.current) {
           const localPlayer = guestLocalStateRef.current
@@ -339,6 +352,7 @@ export function useGameSession() {
       ...gameState,
       connectedPlayers: connectedPlayers,
       _ts: Date.now(), // timestamp for debugging
+      _gen: gameGenerationRef.current, // game generation — increments on reset
     }
     channelRef.current.send({
       type: 'broadcast',
@@ -366,6 +380,12 @@ export function useGameSession() {
     }, HEARTBEAT_INTERVAL)
     return () => clearInterval(heartbeatTimerRef.current)
   }, [isMultiDevice, isHost])
+
+  // Host: increment game generation (called on "Run it back" / game reset)
+  // Tells all guests to discard cached local state and accept host state unconditionally
+  const resetGameGeneration = useCallback(() => {
+    gameGenerationRef.current += 1
+  }, [])
 
   // Guest: send a player update to host (and cache locally for resync)
   const sendPlayerUpdate = useCallback((playerId, updates) => {
@@ -469,5 +489,6 @@ export function useGameSession() {
     setOnFullState,
     setOnPlayerClaim,
     setConnectedPlayers,
+    resetGameGeneration,
   }
 }
