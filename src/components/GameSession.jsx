@@ -762,12 +762,25 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
   useEffect(() => {
     if (!mp.isMultiDevice || mp.isHost) return
     mp.setOnFullState((payload) => {
-      if (payload.players) setPlayers(payload.players)
+      if (payload.players) {
+        const claimedId = mp.claimedPlayerId
+        const msSinceTap = Date.now() - mp.lastLocalTapAtRef.current
+        if (claimedId && msSinceTap < 600) {
+          // Recent local tap — keep optimistic state for claimed player, accept others
+          setPlayers(prev => prev.map(p =>
+            String(p.id) === String(claimedId)
+              ? p // keep local optimistic state
+              : payload.players.find(pp => String(pp.id) === String(p.id)) || p
+          ))
+        } else {
+          setPlayers(payload.players)
+        }
+      }
       if (payload.turnCount !== undefined) setTurnCount(payload.turnCount)
       if (payload.stormCount !== undefined) setStormCount(payload.stormCount)
       if (payload.connectedPlayers) mp.setConnectedPlayers(payload.connectedPlayers)
     })
-  }, [mp.isMultiDevice, mp.isHost]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mp.isMultiDevice, mp.isHost, mp.claimedPlayerId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Share Game handler ---
   const handleShareGame = async () => {

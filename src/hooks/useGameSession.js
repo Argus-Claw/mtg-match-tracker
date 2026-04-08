@@ -57,6 +57,7 @@ export function useGameSession() {
   const dbWriteTimerRef = useRef(null) // debounce timer for DB writes
   const claimedPlayerIdRef = useRef(null)
   const gameGenerationRef = useRef(0) // incremented on game reset
+  const lastLocalTapAtRef = useRef(0) // timestamp of last guest optimistic tap
 
   // Keep connectedPlayers ref in sync with state
   useEffect(() => { connectedPlayersRef.current = connectedPlayers }, [connectedPlayers])
@@ -345,6 +346,7 @@ export function useGameSession() {
   // No local state caching — guest accepts DB state as authoritative
   const sendPlayerUpdate = useCallback((playerId, updates) => {
     if (!channelRef.current || !isMultiDevice) return
+    lastLocalTapAtRef.current = Date.now()
     channelRef.current.send({
       type: 'broadcast',
       event: 'player_update',
@@ -445,5 +447,6 @@ export function useGameSession() {
     setOnPlayerClaim,
     setConnectedPlayers,
     resetGameGeneration,
+    lastLocalTapAtRef,
   }
 }
