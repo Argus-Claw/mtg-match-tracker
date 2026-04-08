@@ -749,11 +749,14 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
     if (!mp.isMultiDevice || !mp.isHost) return
     mp.setOnRemoteUpdate((payload) => {
       if (payload.type === 'player_update') {
-        const { playerId, updates } = payload
+        const { playerId, updates, clientSeq } = payload
         // Apply guest update — player ID matching is sufficient authorization
         // (only the guest who claimed this player sends updates for it)
         // Use String() comparison to handle any type mismatch from serialization
-        setPlayers(prev => prev.map(p => String(p.id) === String(playerId) ? { ...p, ...updates } : p))
+        // Store lastClientSeq so the guest can detect stale round-tripped state
+        setPlayers(prev => prev.map(p => String(p.id) === String(playerId)
+          ? { ...p, ...updates, lastClientSeq: clientSeq ?? p.lastClientSeq }
+          : p))
       }
     })
   }, [mp.isMultiDevice, mp.isHost]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -761,11 +764,56 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
   // --- Multiplayer: Guest receives full state from host ---
   useEffect(() => {
     if (!mp.isMultiDevice || mp.isHost) return
-    mp.setOnFullState((payload) => {
-      if (payload.players) setPlayers(payload.players)
+    mp.setOnFullState((payload, forceAccept) => {
       if (payload.turnCount !== undefined) setTurnCount(payload.turnCount)
       if (payload.stormCount !== undefined) setStormCount(payload.stormCount)
       if (payload.connectedPlayers) mp.setConnectedPlayers(payload.connectedPlayers)
+      if (!payload.players) return
+
+      // If forceAccept (fetchGameState on join/reconnect), apply everything
+      if (forceAccept) {
+        setPlayers(payload.players)
+        return
+      }
+
+      // Guard: for the guest's own claimed player, drop stale round-tripped state.
+      // The server state lags behind rapid local taps due to debounce + DB round-trip.
+      const claimedId = mp.claimedPlayerId
+      const localSeq = mp.clientSeqRef.current
+
+      // If game generation increased (Run it back), accept everything and reset seq
+      if (payload._gen !== undefined && payload._gen > mp.lastSeenGenRef.current) {
+        mp.lastSeenGenRef.current = payload._gen
+        mp.clientSeqRef.current = 0
+        setPlayers(payload.players)
+        return
+      }
+      if (payload._gen !== undefined) mp.lastSeenGenRef.current = payload._gen
+
+      if (!claimedId || localSeq === 0) {
+        // No outstanding optimistic updates — accept everything
+        setPlayers(payload.players)
+        return
+      }
+
+      // Check if the incoming state has caught up to our latest sent seq
+      const incomingPlayer = payload.players.find(p => String(p.id) === String(claimedId))
+      const incomingSeq = incomingPlayer?.lastClientSeq ?? 0
+
+      if (incomingSeq >= localSeq) {
+        // Server caught up — accept everything, reset local seq
+        mp.clientSeqRef.current = 0
+        setPlayers(payload.players)
+      } else {
+        // Server is behind — accept all OTHER players, keep local state for claimed player
+        setPlayers(prev => {
+          const incomingMap = new Map(payload.players.map(p => [String(p.id), p]))
+          return prev.map(p => {
+            if (String(p.id) === String(claimedId)) return p // keep local optimistic state
+            return incomingMap.get(String(p.id)) ?? p
+          })
+        })
+      }
     })
   }, [mp.isMultiDevice, mp.isHost]) // eslint-disable-line react-hooks/exhaustive-deps
 

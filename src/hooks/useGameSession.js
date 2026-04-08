@@ -57,6 +57,8 @@ export function useGameSession() {
   const dbWriteTimerRef = useRef(null) // debounce timer for DB writes
   const claimedPlayerIdRef = useRef(null)
   const gameGenerationRef = useRef(0) // incremented on game reset
+  const clientSeqRef = useRef(0) // guest outgoing sequence number for optimistic-update guard
+  const lastSeenGenRef = useRef(0) // last _gen seen from server (detect resets)
 
   // Keep connectedPlayers ref in sync with state
   useEffect(() => { connectedPlayersRef.current = connectedPlayers }, [connectedPlayers])
@@ -76,7 +78,10 @@ export function useGameSession() {
         .single()
       if (!error && data?.game_state?.players && onFullStateRef.current) {
         lastReceivedRef.current = Date.now()
-        onFullStateRef.current(data.game_state)
+        // Reset seq guard — we're fetching fresh state, accept it fully
+        clientSeqRef.current = 0
+        if (data.game_state._gen !== undefined) lastSeenGenRef.current = data.game_state._gen
+        onFullStateRef.current(data.game_state, true) // forceAccept=true
       }
     } catch (err) {
       console.error('[GameSession] Failed to fetch state from DB:', err)
@@ -342,13 +347,14 @@ export function useGameSession() {
   }, [])
 
   // Guest: send a player update to host via broadcast
-  // No local state caching — guest accepts DB state as authoritative
+  // Tags each update with clientSeq so the guest can detect stale round-trips
   const sendPlayerUpdate = useCallback((playerId, updates) => {
     if (!channelRef.current || !isMultiDevice) return
+    clientSeqRef.current += 1
     channelRef.current.send({
       type: 'broadcast',
       event: 'player_update',
-      payload: { playerId, updates, type: 'player_update' },
+      payload: { playerId, updates, type: 'player_update', clientSeq: clientSeqRef.current },
     })
   }, [isMultiDevice])
 
@@ -445,5 +451,7 @@ export function useGameSession() {
     setOnPlayerClaim,
     setConnectedPlayers,
     resetGameGeneration,
+    clientSeqRef,
+    lastSeenGenRef,
   }
 }
