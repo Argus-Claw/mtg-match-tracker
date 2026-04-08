@@ -1,13 +1,17 @@
 /**
  * useGameSession — real-time multiplayer game session management.
  *
- * Uses Supabase Broadcast channels for instant state sync.
- * Host is source of truth — broadcasts full state on every change + periodic heartbeat.
- * Guests send player-scoped updates that the host merges.
+ * Server-authoritative architecture:
+ * - Host writes game state to game_sessions.game_state in Supabase (single write path)
+ * - ALL clients derive displayed state from postgres_changes on game_sessions (DB is source of truth)
+ * - Guests send player-scoped updates to host via broadcast; host merges and persists to DB
+ * - Guests NEVER broadcast their local state back — they only READ from DB changes
+ *
+ * Flow: client makes change → host writes to DB → postgres_changes delivers to all → all re-render
  *
  * Resilience features:
- * - Periodic heartbeat broadcast from host (every 5s) ensures eventual sync
- * - Guest stale detection — requests fresh state if no update received in 10s
+ * - Guest fetches state from DB on join, reconnect, and stale detection
+ * - Periodic heartbeat ping from host for connectivity detection
  * - Reconnect on tab visibility change (mobile browsers kill WebSockets in background)
  * - Connection health tracking with isChannelHealthy state
  */
@@ -25,9 +29,10 @@ function generateCode() {
   return code
 }
 
-const HEARTBEAT_INTERVAL = 5000 // Host broadcasts state every 5s
-const GUEST_STALE_THRESHOLD = 12000 // Guest requests state if no update in 12s
+const HEARTBEAT_INTERVAL = 5000 // Host pings every 5s for connectivity detection
+const GUEST_STALE_THRESHOLD = 12000 // Guest fetches from DB if no update in 12s
 const RECONNECT_DELAY = 2000
+const DB_WRITE_DEBOUNCE = 80 // Debounce DB writes for rapid taps
 
 export function useGameSession() {
   const [sessionCode, setSessionCode] = useState(null)
@@ -39,26 +44,46 @@ export function useGameSession() {
   const [claimedPlayerId, setClaimedPlayerId] = useState(null) // guest's own claimed player
   const channelRef = useRef(null)
   const onRemoteUpdateRef = useRef(null) // callback for host to receive guest updates
-  const onFullStateRef = useRef(null) // callback for guest to receive host state
+  const onFullStateRef = useRef(null) // callback for guest to receive authoritative state
   const onPlayerClaimRef = useRef(null) // callback when a player is claimed
   const reconnectTimerRef = useRef(null)
   const heartbeatTimerRef = useRef(null)
   const guestStaleTimerRef = useRef(null)
   const lastReceivedRef = useRef(0) // timestamp of last received message (guest)
   const sessionCodeRef = useRef(null) // for reconnection in visibility handler
+  const sessionIdRef = useRef(null) // for DB writes
   const isHostRef = useRef(true)
-  const broadcastFullStateRef = useRef(null) // latest broadcastFullState for heartbeat
-  const guestLocalStateRef = useRef(null) // guest's local player state for resync after reconnect
+  const connectedPlayersRef = useRef({}) // ref mirror for use in async/debounced callbacks
+  const dbWriteTimerRef = useRef(null) // debounce timer for DB writes
   const claimedPlayerIdRef = useRef(null)
-  const gameGenerationRef = useRef(0) // incremented on game reset — tells guests to accept host state unconditionally
-  const lastSeenGenRef = useRef(0) // guest tracks the last generation it saw
+  const gameGenerationRef = useRef(0) // incremented on game reset
+
+  // Keep connectedPlayers ref in sync with state
+  useEffect(() => { connectedPlayersRef.current = connectedPlayers }, [connectedPlayers])
 
   // Register callbacks
   const setOnRemoteUpdate = useCallback((fn) => { onRemoteUpdateRef.current = fn }, [])
   const setOnFullState = useCallback((fn) => { onFullStateRef.current = fn }, [])
   const setOnPlayerClaim = useCallback((fn) => { onPlayerClaimRef.current = fn }, [])
 
-  // Subscribe to a Supabase Broadcast channel
+  // Fetch current game state from DB (used by guest on join/reconnect/stale)
+  const fetchGameState = useCallback(async (code) => {
+    try {
+      const { data, error } = await supabase
+        .from('game_sessions')
+        .select('game_state')
+        .eq('code', code)
+        .single()
+      if (!error && data?.game_state?.players && onFullStateRef.current) {
+        lastReceivedRef.current = Date.now()
+        onFullStateRef.current(data.game_state)
+      }
+    } catch (err) {
+      console.error('[GameSession] Failed to fetch state from DB:', err)
+    }
+  }, [])
+
+  // Subscribe to a Supabase channel (broadcast for events + postgres_changes for state)
   const subscribeToChannel = useCallback((code, asHost) => {
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current)
@@ -70,102 +95,28 @@ export function useGameSession() {
       config: { broadcast: { self: false } },
     })
 
-    // Host listens for guest player updates
+    // --- DB-driven state sync (guests only) ---
+    // Guests receive authoritative state via postgres_changes on game_sessions.
+    // This is the ONLY path by which guests update game state — no broadcast state pushes.
+    if (!asHost) {
+      channel.on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'game_sessions',
+        filter: `code=eq.${code}`,
+      }, (payload) => {
+        lastReceivedRef.current = Date.now()
+        const gameState = payload.new.game_state
+        if (gameState?.players && onFullStateRef.current) {
+          onFullStateRef.current(gameState)
+        }
+      })
+    }
+
+    // --- Broadcast: guest sends player updates to host ---
     channel.on('broadcast', { event: 'player_update' }, ({ payload }) => {
       if (asHost && onRemoteUpdateRef.current) {
         onRemoteUpdateRef.current(payload)
-      }
-    })
-
-    // Guest listens for full state from host
-    channel.on('broadcast', { event: 'full_state' }, ({ payload }) => {
-      lastReceivedRef.current = Date.now()
-      if (!asHost && onFullStateRef.current) {
-        // If the host incremented the game generation (e.g. "Run it back"),
-        // clear guest local state so we accept the reset unconditionally
-        if (payload._gen !== undefined && payload._gen > lastSeenGenRef.current) {
-          lastSeenGenRef.current = payload._gen
-          guestLocalStateRef.current = null
-        }
-        // Before applying host state, re-send our local state if we have pending changes
-        // This handles the case where guest tapped while disconnected
-        if (guestLocalStateRef.current && claimedPlayerIdRef.current) {
-          const localPlayer = guestLocalStateRef.current
-          const remotePlayer = payload.players?.find(p => String(p.id) === String(claimedPlayerIdRef.current))
-          if (remotePlayer && localPlayer.life !== remotePlayer.life) {
-            // Our local state differs — re-send our player state to host
-            channel.send({
-              type: 'broadcast',
-              event: 'player_update',
-              payload: {
-                playerId: claimedPlayerIdRef.current,
-                updates: {
-                  life: localPlayer.life,
-                  poison: localPlayer.poison,
-                  energy: localPlayer.energy,
-                  experience: localPlayer.experience,
-                  commanderDamage: localPlayer.commanderDamage,
-                },
-                type: 'player_update',
-              },
-            })
-            // Don't apply host state for our player — keep local optimistic state
-            // The host will merge our update and broadcast back the corrected state
-            const correctedPayload = {
-              ...payload,
-              players: payload.players.map(p =>
-                String(p.id) === String(claimedPlayerIdRef.current) ? { ...p, ...localPlayer } : p
-              ),
-            }
-            onFullStateRef.current(correctedPayload)
-            return
-          }
-        }
-        onFullStateRef.current(payload)
-      }
-    })
-
-    // Both listen for heartbeat (guest uses it as connectivity signal)
-    channel.on('broadcast', { event: 'heartbeat' }, ({ payload }) => {
-      lastReceivedRef.current = Date.now()
-      // Heartbeat carries full state for guests — treat same as full_state
-      if (!asHost && onFullStateRef.current && payload.players) {
-        // Check for game generation change (reset)
-        if (payload._gen !== undefined && payload._gen > lastSeenGenRef.current) {
-          lastSeenGenRef.current = payload._gen
-          guestLocalStateRef.current = null
-        }
-        // Same resync logic as full_state
-        if (guestLocalStateRef.current && claimedPlayerIdRef.current) {
-          const localPlayer = guestLocalStateRef.current
-          const remotePlayer = payload.players?.find(p => String(p.id) === String(claimedPlayerIdRef.current))
-          if (remotePlayer && localPlayer.life !== remotePlayer.life) {
-            channel.send({
-              type: 'broadcast',
-              event: 'player_update',
-              payload: {
-                playerId: claimedPlayerIdRef.current,
-                updates: {
-                  life: localPlayer.life,
-                  poison: localPlayer.poison,
-                  energy: localPlayer.energy,
-                  experience: localPlayer.experience,
-                  commanderDamage: localPlayer.commanderDamage,
-                },
-                type: 'player_update',
-              },
-            })
-            const correctedPayload = {
-              ...payload,
-              players: payload.players.map(p =>
-                String(p.id) === String(claimedPlayerIdRef.current) ? { ...p, ...localPlayer } : p
-              ),
-            }
-            onFullStateRef.current(correctedPayload)
-            return
-          }
-        }
-        onFullStateRef.current(payload)
       }
     })
 
@@ -189,13 +140,9 @@ export function useGameSession() {
       })
     })
 
-    // Host broadcasts connected players list to new joiners
-    channel.on('broadcast', { event: 'request_state' }, () => {
-      if (asHost) {
-        if (onRemoteUpdateRef.current) {
-          onRemoteUpdateRef.current({ type: 'request_state' })
-        }
-      }
+    // Guest listens for heartbeat as connectivity signal
+    channel.on('broadcast', { event: 'heartbeat' }, () => {
+      lastReceivedRef.current = Date.now()
     })
 
     // Guest listens for pong (response to ping)
@@ -215,9 +162,9 @@ export function useGameSession() {
       if (status === 'SUBSCRIBED') {
         setIsChannelHealthy(true)
         lastReceivedRef.current = Date.now()
-        // Guest requests current state on join
+        // Guest: fetch current state from DB (replaces request_state broadcast)
         if (!asHost) {
-          channel.send({ type: 'broadcast', event: 'request_state', payload: {} })
+          fetchGameState(code)
         }
       }
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
@@ -235,7 +182,7 @@ export function useGameSession() {
 
     channelRef.current = channel
     return channel
-  }, [])
+  }, [fetchGameState])
 
   // Reconnect on tab visibility change (mobile browsers kill WebSockets in background)
   useEffect(() => {
@@ -247,19 +194,17 @@ export function useGameSession() {
           // Channel died while backgrounded — reconnect
           console.log('[GameSession] Tab visible, channel state:', state, '— reconnecting')
           subscribeToChannel(sessionCodeRef.current, isHostRef.current)
-        } else {
-          // Channel looks alive — guest should request fresh state to catch up
-          if (!isHostRef.current) {
-            channelRef.current.send({ type: 'broadcast', event: 'request_state', payload: {} })
-          }
+        } else if (!isHostRef.current) {
+          // Channel looks alive — guest fetches fresh state from DB to catch up
+          fetchGameState(sessionCodeRef.current)
         }
       }
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [subscribeToChannel])
+  }, [subscribeToChannel, fetchGameState])
 
-  // Guest: periodic stale detection — request state if no update received recently
+  // Guest: periodic stale detection — fetch state from DB if no update received recently
   useEffect(() => {
     if (!isMultiDevice || isHost) {
       clearInterval(guestStaleTimerRef.current)
@@ -267,15 +212,17 @@ export function useGameSession() {
     }
     guestStaleTimerRef.current = setInterval(() => {
       const elapsed = Date.now() - lastReceivedRef.current
-      if (elapsed > GUEST_STALE_THRESHOLD && channelRef.current) {
-        console.log('[GameSession] Guest stale — requesting fresh state')
-        channelRef.current.send({ type: 'broadcast', event: 'request_state', payload: {} })
+      if (elapsed > GUEST_STALE_THRESHOLD) {
+        console.log('[GameSession] Guest stale — fetching state from DB')
+        if (sessionCodeRef.current) fetchGameState(sessionCodeRef.current)
         // Also ping to check connectivity
-        channelRef.current.send({ type: 'broadcast', event: 'ping', payload: {} })
+        if (channelRef.current) {
+          channelRef.current.send({ type: 'broadcast', event: 'ping', payload: {} })
+        }
       }
     }, GUEST_STALE_THRESHOLD / 2)
     return () => clearInterval(guestStaleTimerRef.current)
-  }, [isMultiDevice, isHost])
+  }, [isMultiDevice, isHost, fetchGameState])
 
   // Host: create a new session
   const createSession = useCallback(async (format, startingLife) => {
@@ -302,6 +249,7 @@ export function useGameSession() {
     setSessionCode(code)
     sessionCodeRef.current = code
     setSessionId(data.id)
+    sessionIdRef.current = data.id
     setIsHost(true)
     isHostRef.current = true
     setIsMultiDevice(true)
@@ -336,6 +284,7 @@ export function useGameSession() {
     setSessionCode(session.code)
     sessionCodeRef.current = session.code
     setSessionId(session.id)
+    sessionIdRef.current = session.id
     setIsHost(false)
     isHostRef.current = false
     setIsMultiDevice(true)
@@ -345,36 +294,42 @@ export function useGameSession() {
     return { session, userId }
   }, [subscribeToChannel])
 
-  // Host: broadcast full game state to all guests
-  const broadcastFullState = useCallback((gameState) => {
-    if (!channelRef.current || !isMultiDevice) return
-    const payload = {
-      ...gameState,
-      connectedPlayers: connectedPlayers,
-      _ts: Date.now(), // timestamp for debugging
-      _gen: gameGenerationRef.current, // game generation — increments on reset
-    }
-    channelRef.current.send({
-      type: 'broadcast',
-      event: 'full_state',
-      payload,
-    })
-    // Cache for heartbeat use
-    broadcastFullStateRef.current = payload
-  }, [isMultiDevice, connectedPlayers])
+  // Host: persist game state to DB (single write path — replaces broadcastFullState)
+  // All connected guests receive the update via postgres_changes subscription.
+  const persistGameState = useCallback((gameState) => {
+    const sid = sessionIdRef.current
+    if (!sid) return
 
-  // Host: periodic heartbeat broadcast — ensures guests stay synced even if change-based broadcasts are missed
+    clearTimeout(dbWriteTimerRef.current)
+    dbWriteTimerRef.current = setTimeout(() => {
+      const payload = {
+        ...gameState,
+        connectedPlayers: connectedPlayersRef.current,
+        _gen: gameGenerationRef.current,
+        _ts: Date.now(),
+      }
+      supabase
+        .from('game_sessions')
+        .update({ game_state: payload })
+        .eq('id', sid)
+        .then(({ error }) => {
+          if (error) console.error('[GameSession] DB write failed:', error)
+        })
+    }, DB_WRITE_DEBOUNCE)
+  }, [])
+
+  // Host: periodic heartbeat ping — connectivity signal for guests (no state payload)
   useEffect(() => {
     if (!isMultiDevice || !isHost) {
       clearInterval(heartbeatTimerRef.current)
       return
     }
     heartbeatTimerRef.current = setInterval(() => {
-      if (channelRef.current && broadcastFullStateRef.current) {
+      if (channelRef.current) {
         channelRef.current.send({
           type: 'broadcast',
           event: 'heartbeat',
-          payload: { ...broadcastFullStateRef.current, _ts: Date.now() },
+          payload: { _ts: Date.now() },
         })
       }
     }, HEARTBEAT_INTERVAL)
@@ -382,15 +337,13 @@ export function useGameSession() {
   }, [isMultiDevice, isHost])
 
   // Host: increment game generation (called on "Run it back" / game reset)
-  // Tells all guests to discard cached local state and accept host state unconditionally
   const resetGameGeneration = useCallback(() => {
     gameGenerationRef.current += 1
   }, [])
 
-  // Guest: send a player update to host (and cache locally for resync)
+  // Guest: send a player update to host via broadcast
+  // No local state caching — guest accepts DB state as authoritative
   const sendPlayerUpdate = useCallback((playerId, updates) => {
-    // Cache the latest state for resync after reconnect
-    guestLocalStateRef.current = { ...(guestLocalStateRef.current || {}), ...updates }
     if (!channelRef.current || !isMultiDevice) return
     channelRef.current.send({
       type: 'broadcast',
@@ -419,6 +372,7 @@ export function useGameSession() {
   const endSession = useCallback(async () => {
     clearInterval(heartbeatTimerRef.current)
     clearInterval(guestStaleTimerRef.current)
+    clearTimeout(dbWriteTimerRef.current)
 
     if (channelRef.current) {
       // Notify others
@@ -451,11 +405,11 @@ export function useGameSession() {
     setSessionCode(null)
     sessionCodeRef.current = null
     setSessionId(null)
+    sessionIdRef.current = null
     setIsMultiDevice(false)
     setIsChannelHealthy(false)
     setConnectedPlayers({})
     setClaimedPlayerId(null)
-    broadcastFullStateRef.current = null
     clearTimeout(reconnectTimerRef.current)
   }, [isHost, sessionId, claimedPlayerId])
 
@@ -468,6 +422,7 @@ export function useGameSession() {
       clearTimeout(reconnectTimerRef.current)
       clearInterval(heartbeatTimerRef.current)
       clearInterval(guestStaleTimerRef.current)
+      clearTimeout(dbWriteTimerRef.current)
     }
   }, [])
 
@@ -481,7 +436,7 @@ export function useGameSession() {
     claimedPlayerId,
     createSession,
     joinSession,
-    broadcastFullState,
+    persistGameState,
     sendPlayerUpdate,
     claimPlayer,
     endSession,

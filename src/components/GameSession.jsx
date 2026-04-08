@@ -725,13 +725,14 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
     return () => { document.removeEventListener('fullscreenchange', handler); document.removeEventListener('webkitfullscreenchange', handler) }
   }, [])
 
-  // --- Multiplayer: Host broadcasts full state on every change ---
-  const broadcastTimeoutRef = useRef(null)
+  // --- Multiplayer: Host persists game state to DB on every change ---
+  // All guests receive updates via postgres_changes subscription (server-authoritative).
+  const persistTimeoutRef = useRef(null)
   useEffect(() => {
     if (!mp.isMultiDevice || !mp.isHost) return
-    clearTimeout(broadcastTimeoutRef.current)
-    broadcastTimeoutRef.current = setTimeout(() => {
-      mp.broadcastFullState({
+    clearTimeout(persistTimeoutRef.current)
+    persistTimeoutRef.current = setTimeout(() => {
+      mp.persistGameState({
         players,
         turnCount,
         stormCount,
@@ -739,26 +740,14 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
         startingLife,
         themeId: theme.id,
       })
-    }, 50) // debounce 50ms
-    return () => clearTimeout(broadcastTimeoutRef.current)
+    }, 50) // debounce 50ms before DB write
+    return () => clearTimeout(persistTimeoutRef.current)
   }, [players, turnCount, stormCount, mp.isMultiDevice, mp.isHost]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Multiplayer: Host receives guest player updates ---
   useEffect(() => {
     if (!mp.isMultiDevice || !mp.isHost) return
     mp.setOnRemoteUpdate((payload) => {
-      if (payload.type === 'request_state') {
-        // A guest just joined — send current state
-        mp.broadcastFullState({
-          players,
-          turnCount,
-          stormCount,
-          format,
-          startingLife,
-          themeId: theme.id,
-        })
-        return
-      }
       if (payload.type === 'player_update') {
         const { playerId, updates } = payload
         // Apply guest update — player ID matching is sufficient authorization
@@ -767,7 +756,7 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
         setPlayers(prev => prev.map(p => String(p.id) === String(playerId) ? { ...p, ...updates } : p))
       }
     })
-  }, [mp.isMultiDevice, mp.isHost, players, turnCount, stormCount, mp.connectedPlayers]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mp.isMultiDevice, mp.isHost]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Multiplayer: Guest receives full state from host ---
   useEffect(() => {
@@ -793,9 +782,9 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
       const url = `${getShareUrlBase()}/join/${code}`
       setShareUrl(url)
       setShowShareModal(true)
-      // Broadcast initial state to any early joiners
+      // Persist initial state to DB so joining guests can read it
       setTimeout(() => {
-        mp.broadcastFullState({
+        mp.persistGameState({
           players,
           turnCount,
           stormCount,
