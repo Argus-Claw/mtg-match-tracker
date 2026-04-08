@@ -708,9 +708,33 @@ export default function GameSession({ format, startingLife, setupPlayers, getPla
       themeId: theme.id,
       layoutMode,
       timestamp: Date.now(),
+      multiplayer: mp.isMultiDevice && mp.isHost ? {
+        sessionId: mp.sessionId,
+        sessionCode: mp.sessionCode,
+        connectedPlayers: mp.connectedPlayers,
+      } : null,
     }
     localStorage.setItem(ACTIVE_GAME_KEY, JSON.stringify(saveState))
-  }, [players, format, startingLife, turnCount, stormCount, theme, layoutMode, isGuestView])
+  }, [players, format, startingLife, turnCount, stormCount, theme, layoutMode, isGuestView, mp.isMultiDevice, mp.isHost, mp.sessionId, mp.sessionCode, mp.connectedPlayers])
+
+  // Attempt multiplayer rejoin on mount (host resuming a multiplayer session)
+  const rejoinAttemptedRef = useRef(false)
+  useEffect(() => {
+    if (rejoinAttemptedRef.current) return
+    if (!resumeState?.multiplayer || isGuestView) return
+    rejoinAttemptedRef.current = true
+
+    const { sessionId, sessionCode } = resumeState.multiplayer
+    mp.rejoinSession(sessionId, sessionCode).then(result => {
+      if (!result.ok) {
+        console.warn('[GameSession] Multiplayer rejoin failed:', result.reason)
+        addToast('Multiplayer session ended — tap Share to start a new one', 'info')
+      }
+    }).catch(err => {
+      console.warn('[GameSession] Multiplayer rejoin error:', err)
+      addToast('Multiplayer session ended — tap Share to start a new one', 'info')
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Save theme preference
   useEffect(() => {

@@ -295,6 +295,38 @@ export function useGameSession() {
     return { session, userId }
   }, [subscribeToChannel])
 
+  // Host: rejoin an existing session (for resume after page reload)
+  const rejoinSession = useCallback(async (sessionId, sessionCode) => {
+    const { data, error } = await supabase
+      .from('game_sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .eq('status', 'active')
+      .single()
+
+    if (error || !data) {
+      return { ok: false, reason: 'not_found' }
+    }
+
+    // Check if session is too old (>12 hours)
+    const sessionAge = Date.now() - new Date(data.created_at).getTime()
+    if (sessionAge > 12 * 60 * 60 * 1000) {
+      return { ok: false, reason: 'too_old' }
+    }
+
+    setSessionCode(sessionCode)
+    sessionCodeRef.current = sessionCode
+    setSessionId(sessionId)
+    sessionIdRef.current = sessionId
+    setIsHost(true)
+    isHostRef.current = true
+    setIsMultiDevice(true)
+
+    subscribeToChannel(sessionCode, true)
+
+    return { ok: true, session: data }
+  }, [subscribeToChannel])
+
   // Host: persist game state to DB (single write path — replaces broadcastFullState)
   // All connected guests receive the update via postgres_changes subscription.
   const persistGameState = useCallback((gameState) => {
@@ -438,6 +470,7 @@ export function useGameSession() {
     claimedPlayerId,
     createSession,
     joinSession,
+    rejoinSession,
     persistGameState,
     sendPlayerUpdate,
     claimPlayer,
