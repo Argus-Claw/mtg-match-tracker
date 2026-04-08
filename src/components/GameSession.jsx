@@ -392,18 +392,18 @@ function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, i
             const trackers = getCmdrTrackers(player.commanderDamage, opp.id)
             const hasMultiple = trackers.length > 1
             return (
-              <div key={opp.id} style={{ marginBottom: isDesktop ? 8 : 6 }}>
+              <div key={opp.id} style={{ marginBottom: isDesktop ? 8 : 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: hasMultiple ? (isDesktop ? 4 : 2) : 0 }}>
                   <span style={{ color: theme.text, fontSize: isDesktop ? 16 : 12, fontWeight: 700 }}>{opp.name}</span>
-                  <button onClick={handleButton(() => {
+                  {isDesktop && <button onClick={handleButton(() => {
                     const newTrackers = [...trackers, { id: ++nextCmdrId, name: `Cmdr ${trackers.length + 1}`, damage: 0 }]
                     onUpdate({ commanderDamage: { ...player.commanderDamage, [opp.id]: newTrackers } })
-                  })} style={{ padding: isDesktop ? '2px 8px' : '1px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.05)', border: `1px solid ${theme.border}`, color: theme.muted, fontSize: isDesktop ? 11 : 9, cursor: 'pointer', fontFamily: "'Cinzel', serif" }}>+ Cmdr</button>
+                  })} style={{ padding: '2px 8px', borderRadius: 4, background: 'rgba(255,255,255,0.05)', border: `1px solid ${theme.border}`, color: theme.muted, fontSize: 11, cursor: 'pointer', fontFamily: "'Cinzel', serif" }}>+ Cmdr</button>}
                 </div>
                 {trackers.map((tracker, tIdx) => {
                   const lethal = tracker.damage >= 21
                   return (
-                    <div key={tracker.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: isDesktop ? '4px 0' : '3px 0', paddingLeft: hasMultiple ? (isDesktop ? 12 : 8) : 0, opacity: lethal ? 0.5 : 1 }}>
+                    <div key={tracker.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: isDesktop ? '4px 0' : '3px 0', paddingLeft: hasMultiple ? (isDesktop ? 12 : 8) : 0, opacity: lethal ? 0.5 : 1, minHeight: isDesktop ? undefined : 48, contain: isDesktop ? undefined : 'layout', boxSizing: 'border-box' }}>
                       <span onClick={hasMultiple ? handleButton(() => {
                         const name = prompt('Commander name:', tracker.name)
                         if (name && name !== tracker.name) {
@@ -417,20 +417,24 @@ function PlayerCard({ player, players, theme, isCommander, onUpdate, onRemove, i
                           <span onClick={(e) => { e.stopPropagation(); haptic(); const newTrackers = trackers.filter((_, i) => i !== tIdx); onUpdate({ commanderDamage: { ...player.commanderDamage, [opp.id]: newTrackers.length ? newTrackers : [{ id: 1, name: 'Cmdr 1', damage: 0 }] } }) }} style={{ color: '#F87171', fontSize: isDesktop ? 10 : 8, cursor: 'pointer', marginLeft: 2 }}>{'\u2716'}</span>
                         )}
                       </span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: isDesktop ? 12 : 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: isDesktop ? 12 : 10 }}>
                         <button onClick={handleButton(() => {
                           const newTrackers = trackers.map((t, i) => i === tIdx ? { ...t, damage: Math.max(0, t.damage - 1) } : t)
                           onUpdate({ commanderDamage: { ...player.commanderDamage, [opp.id]: newTrackers } })
-                        })} style={{ width: isDesktop ? 36 : 24, height: isDesktop ? 36 : 24, borderRadius: 4, background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.2)', color: '#F87171', fontSize: isDesktop ? 20 : 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{'\u2212'}</button>
-                        <span style={{ color: lethal ? '#EF4444' : theme.accent, fontFamily: "'Cinzel', serif", fontSize: isDesktop ? 22 : 16, fontWeight: 700, minWidth: isDesktop ? 28 : 20, textAlign: 'center' }}>{tracker.damage}</span>
+                        })} style={{ width: isDesktop ? 36 : 44, height: isDesktop ? 36 : 44, borderRadius: isDesktop ? 4 : 8, background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.2)', color: '#F87171', fontSize: isDesktop ? 20 : 18, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{'\u2212'}</button>
+                        <span style={{ color: lethal ? '#EF4444' : theme.accent, fontFamily: "'Cinzel', serif", fontSize: isDesktop ? 22 : 20, fontWeight: 700, minWidth: isDesktop ? 28 : 28, textAlign: 'center' }}>{tracker.damage}</span>
                         <button onClick={handleButton(() => {
                           const newTrackers = trackers.map((t, i) => i === tIdx ? { ...t, damage: t.damage + 1 } : t)
                           onUpdate({ commanderDamage: { ...player.commanderDamage, [opp.id]: newTrackers }, life: player.life - 1 })
-                        })} style={{ width: isDesktop ? 36 : 24, height: isDesktop ? 36 : 24, borderRadius: 4, background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.2)', color: '#4ADE80', fontSize: isDesktop ? 20 : 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                        })} style={{ width: isDesktop ? 36 : 44, height: isDesktop ? 36 : 44, borderRadius: isDesktop ? 4 : 8, background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.2)', color: '#4ADE80', fontSize: isDesktop ? 20 : 18, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                       </div>
                     </div>
                   )
                 })}
+                {!isDesktop && <button onClick={handleButton(() => {
+                  const newTrackers = [...trackers, { id: ++nextCmdrId, name: `Cmdr ${trackers.length + 1}`, damage: 0 }]
+                  onUpdate({ commanderDamage: { ...player.commanderDamage, [opp.id]: newTrackers } })
+                })} style={{ marginTop: 8, width: '100%', padding: '6px 0', borderRadius: 6, background: 'rgba(255,255,255,0.05)', border: `1px solid ${theme.border}`, color: theme.muted, fontSize: 11, cursor: 'pointer', fontFamily: "'Cinzel', serif" }}>+ Add Commander</button>}
               </div>
             )
           })}
